@@ -114,7 +114,7 @@ var routes = []route{
 	{"GET", "/v1/accounts/{account}/tokens", (*handler).listTokens},
 	{"POST", "/v1/accounts/{account}/tokens", (*handler).issueToken},
 	{"POST", "/v1/accounts/{account}/tokens/revoke", (*handler).revokeAllTokens},
-	{"DELETE", "/v1/tokens/{id}", (*handler).revokeToken},
+	{"POST", "/v1/accounts/{account}/tokens/{id}/revoke", (*handler).revokeToken},
 	{"GET", "/v1/namespaces/{ns}/members", (*handler).listMembers},
 	{"PUT", "/v1/namespaces/{ns}/members/{account}", (*handler).setMember},
 	{"DELETE", "/v1/namespaces/{ns}/members/{account}", (*handler).removeMember},
@@ -192,7 +192,7 @@ func StatusFor(code core.Code) int {
 	case core.CodeNamespaceNotFound, core.CodeConversationNotFound, core.CodeAccountNotFound, core.CodeTokenNotFound, core.CodeFeedbackNotFound, "not_found":
 		return http.StatusNotFound
 	case core.CodeNamespaceExists, core.CodeConversationExists, core.CodeConversationConcluded,
-		core.CodeNotParticipant, core.CodeNameActive, core.CodeStaleContext, core.CodeAccountExists, core.CodeLastAdmin,
+		core.CodeNotParticipant, core.CodeNameActive, core.CodeStaleContext, core.CodeAccountExists, core.CodeLastAdmin, core.CodeOwnCredential,
 		core.CodeIdempotencyConflict:
 		return http.StatusConflict
 	case core.CodeMessageTooLarge:

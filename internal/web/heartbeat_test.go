@@ -21,7 +21,7 @@ func TestStreamRefreshesStateWithoutMessages(t *testing.T) {
 		time.Sleep(150 * time.Millisecond)
 		_, _ = e.svc.SetPresence(t.Context(), core.Anonymous(), "default", "quiet", core.PresenceParams{Agent: "alice", Presence: "away", Note: "lunch"})
 	}()
-	readEvents(t, resp.Body, func(evs []sse) bool {
+	readEvents(t, resp, func(evs []sse) bool {
 		for _, ev := range evs {
 			if ev.event == "participants" && strings.Contains(ev.data, "lunch") {
 				return true

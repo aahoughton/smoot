@@ -35,7 +35,7 @@ func TestLongPollsStopWhenAccessEnds(t *testing.T) {
 			f, pat := setup(t, 20*time.Millisecond)
 			ch := pending(poll(f, pat))
 			time.Sleep(50 * time.Millisecond)
-			if _, err := f.svc.RevokeAllTokens(t.Context(), f.admin, "pat"); err != nil {
+			if _, err := f.svc.RevokeAllTokens(t.Context(), f.admin, "pat", false); err != nil {
 				t.Fatal(err)
 			}
 			wantCode(t, await(t, ch), core.CodeUnauthorized)

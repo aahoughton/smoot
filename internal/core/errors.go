@@ -49,6 +49,9 @@ const (
 	// CodeIdempotencyConflict is a post that reuses an idempotency key
 	// for a different message.
 	CodeIdempotencyConflict Code = "idempotency_conflict"
+	// CodeOwnCredential is a revocation, made without force, that would
+	// revoke the token the request is using.
+	CodeOwnCredential Code = "own_credential"
 )
 
 // Error is a failure the caller can act on. Message is short, ASCII, and

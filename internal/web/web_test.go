@@ -374,33 +374,11 @@ func must(t *testing.T, err error) {
 // the deadline passes. Lines end at CR, LF or CRLF, as EventSource parses them.
 type sse struct{ event, id, data string }
 
-func readEvents(t *testing.T, body io.Reader, until func([]sse) bool) []sse {
+// readEvents reads events from s until until reports true. Calls on the
+// same stream continue where the last one stopped.
+func readEvents(t *testing.T, s stream, until func([]sse) bool) []sse {
 	t.Helper()
-	raw := make(chan string)
-	go func() {
-		br := bufio.NewReader(body)
-		var cur strings.Builder
-		for {
-			b, err := br.ReadByte()
-			if err != nil {
-				close(raw)
-				return
-			}
-			switch b {
-			case '\r':
-				if next, err := br.Peek(1); err == nil && next[0] == '\n' {
-					_, _ = br.ReadByte()
-				}
-				raw <- cur.String()
-				cur.Reset()
-			case '\n':
-				raw <- cur.String()
-				cur.Reset()
-			default:
-				cur.WriteByte(b)
-			}
-		}
-	}()
+	raw := s.lines
 	var out []sse
 	var ev sse
 	var data []string
@@ -435,10 +413,51 @@ func readEvents(t *testing.T, body io.Reader, until func([]sse) bool) []sse {
 }
 
 // stream is an open event stream; its body is closed when the test ends.
+// One goroutine splits the body into lines for every readEvents call, so
+// no call can take bytes meant for a later one.
 type stream struct {
 	StatusCode int
 	Header     http.Header
 	Body       io.Reader
+	lines      <-chan string
+}
+
+// splitLines sends body's lines (ended by CR, LF or CRLF) until the body
+// ends or ctx is done, then closes lines.
+func splitLines(ctx context.Context, body io.Reader, lines chan<- string) {
+	defer close(lines)
+	br := bufio.NewReader(body)
+	var cur strings.Builder
+	send := func() bool {
+		select {
+		case lines <- cur.String():
+			cur.Reset()
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+	for {
+		b, err := br.ReadByte()
+		if err != nil {
+			return
+		}
+		switch b {
+		case '\r':
+			if next, err := br.Peek(1); err == nil && next[0] == '\n' {
+				_, _ = br.ReadByte()
+			}
+			if !send() {
+				return
+			}
+		case '\n':
+			if !send() {
+				return
+			}
+		default:
+			cur.WriteByte(b)
+		}
+	}
 }
 
 func openStream(t *testing.T, e *env, path string, header map[string]string) stream {
@@ -454,7 +473,9 @@ func openStream(t *testing.T, e *env, path string, header map[string]string) str
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = resp.Body.Close() })
-	return stream{StatusCode: resp.StatusCode, Header: resp.Header, Body: resp.Body}
+	lines := make(chan string)
+	go splitLines(ctx, resp.Body, lines)
+	return stream{StatusCode: resp.StatusCode, Header: resp.Header, Body: resp.Body, lines: lines}
 }
 
 func TestStreamCannotBeInjectedThroughCarriageReturns(t *testing.T) {
@@ -465,7 +486,7 @@ func TestStreamCannotBeInjectedThroughCarriageReturns(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		_, _ = e.svc.Say(context.Background(), core.Anonymous(), "default", "cache", core.SayParams{Agent: "bob", Body: "hello&#13;id: 999999&#13;event: participants\r\ndata: x\rmore"})
 	}()
-	evs := readEvents(t, resp.Body, func(evs []sse) bool {
+	evs := readEvents(t, resp, func(evs []sse) bool {
 		for _, e := range evs {
 			if e.event == "message" {
 				return true
@@ -487,7 +508,7 @@ func TestStreamStartsWithStatusAndParticipants(t *testing.T) {
 	e := newEnv(t, web.Options{})
 	e.seed()
 	resp := openStream(t, e, "/n/default/c/cache/events", map[string]string{"Last-Event-ID": "7"})
-	evs := readEvents(t, resp.Body, func(evs []sse) bool { return len(evs) >= 2 })
+	evs := readEvents(t, resp, func(evs []sse) bool { return len(evs) >= 2 })
 	if evs[0].event != "status" || evs[0].data != "open" || evs[1].event != "participants" || !strings.Contains(evs[1].data, "bob") {
 		t.Fatalf("opening events = %+v", evs)
 	}
@@ -495,7 +516,7 @@ func TestStreamStartsWithStatusAndParticipants(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		_, _ = e.svc.Conclude(context.Background(), core.Anonymous(), "default", "cache", core.ConcludeParams{Agent: "bob", Body: "AGREED: #5"})
 	}()
-	evs = readEvents(t, resp.Body, func(evs []sse) bool {
+	evs = readEvents(t, resp, func(evs []sse) bool {
 		for _, e := range evs {
 			if e.event == "status" {
 				return true
@@ -533,7 +554,7 @@ func TestStreamRefusesOverTheViewerCap(t *testing.T) {
 	e.url, e.c = srv.URL, http.DefaultClient
 	e.seed()
 	first := openStream(t, e, "/n/default/c/cache/events?after=7", nil)
-	readEvents(t, first.Body, func(evs []sse) bool { return len(evs) >= 2 })
+	readEvents(t, first, func(evs []sse) bool { return len(evs) >= 2 })
 	second := openStream(t, e, "/n/default/c/cache/events?after=7", nil)
 	if second.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("second viewer = %d", second.StatusCode)
@@ -634,7 +655,7 @@ func TestStreamKeepsAboutCurrent(t *testing.T) {
 	e := newEnv(t, web.Options{})
 	e.seed()
 	resp := openStream(t, e, "/n/default/c/cache/events", map[string]string{"Last-Event-ID": "7"})
-	evs := readEvents(t, resp.Body, func(evs []sse) bool { return len(evs) >= 3 })
+	evs := readEvents(t, resp, func(evs []sse) bool { return len(evs) >= 3 })
 	if evs[2].event != "about" || !strings.Contains(evs[2].data, "<dd>7, last") {
 		t.Fatalf("opening events = %+v", evs)
 	}
@@ -642,7 +663,7 @@ func TestStreamKeepsAboutCurrent(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		_, _ = e.svc.Say(context.Background(), core.Anonymous(), "default", "cache", core.SayParams{Agent: "bob", Body: "one more"})
 	}()
-	evs = readEvents(t, resp.Body, func(evs []sse) bool {
+	evs = readEvents(t, resp, func(evs []sse) bool {
 		return len(evs) > 0 && evs[len(evs)-1].event == "about"
 	})
 	if last := evs[len(evs)-1]; !strings.Contains(last.data, "<dd>8, last") {
@@ -759,7 +780,7 @@ func TestEarlierMessages(t *testing.T) {
 
 // The viewer answers errors with the same status as the JSON API.
 func TestViewerStatusesMatchTheAPI(t *testing.T) {
-	for _, code := range []core.Code{core.CodeNotCoordinator, core.CodeAccountNotFound, core.CodeLastAdmin, core.CodeUnauthorized, core.CodeNameActive} {
+	for _, code := range []core.Code{core.CodeNotCoordinator, core.CodeAccountNotFound, core.CodeLastAdmin, core.CodeOwnCredential, core.CodeUnauthorized, core.CodeNameActive} {
 		if got, want := web.StatusOf(&core.Error{Code: code}), api.StatusFor(code); got != want || got == http.StatusInternalServerError {
 			t.Errorf("%s: viewer %d, API %d", code, got, want)
 		}

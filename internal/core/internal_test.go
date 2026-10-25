@@ -137,7 +137,7 @@ func TestInlineDeliveryRechecksAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	testHookBeforeInline = func() {
-		if _, err := s.RevokeAllTokens(context.WithoutCancel(ctx), root, "pat"); err != nil {
+		if _, err := s.RevokeAllTokens(context.WithoutCancel(ctx), root, "pat", false); err != nil {
 			t.Error(err)
 		}
 	}

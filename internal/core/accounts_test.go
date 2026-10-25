@@ -151,7 +151,7 @@ func TestCredentialsEndAndAreRechecked(t *testing.T) {
 		must[core.Account](t)(f.svc.CreateAccount(ctx, f.admin, "rev", false))
 		tok := must[core.IssuedToken](t)(f.svc.IssueToken(ctx, f.admin, "rev", "", 0))
 		p := f.login(t, tok.Secret)
-		if err := f.svc.RevokeToken(ctx, f.admin, tok.ID); err != nil {
+		if _, err := f.svc.RevokeToken(ctx, f.admin, "rev", tok.ID, false); err != nil {
 			t.Fatal(err)
 		}
 		wantCode(t, list(p), core.CodeUnauthorized)
@@ -196,7 +196,7 @@ func TestCredentialsEndAndAreRechecked(t *testing.T) {
 		tok2 := must[core.IssuedToken](t)(f.svc.IssueToken(ctx, f.admin, "web", "", 0))
 		s2, _, _ := f.svc.CreateSession(ctx, f.login(t, tok2.Secret), 0, "")
 		s3, _, _ := f.svc.CreateSession(ctx, f.login(t, tok2.Secret), 0, "")
-		if err := f.svc.RevokeToken(ctx, f.admin, tok2.ID); err != nil {
+		if _, err := f.svc.RevokeToken(ctx, f.admin, "web", tok2.ID, false); err != nil {
 			t.Fatal(err)
 		}
 		_, err = f.svc.AuthenticateSession(ctx, s2)
@@ -240,7 +240,7 @@ func TestLastServerAdminAndRecovery(t *testing.T) {
 	must[core.Account](t)(f.svc.UpdateAccount(ctx, second, "plain", core.AccountUpdate{Disabled: ptr(true)}))
 
 	// Locked out: root has no admin rights and no working token.
-	if _, err := f.svc.RevokeAllTokens(ctx, f.admin, "root"); err != nil {
+	if _, err := f.svc.RevokeAllTokens(ctx, f.admin, "root", true); err != nil {
 		t.Fatal(err)
 	}
 	tok := must[core.IssuedToken](t)(f.svc.Recover(ctx, "root"))
@@ -275,11 +275,84 @@ func TestAccountsManageTheirOwnTokens(t *testing.T) {
 	_, err = f.svc.CreateAccount(ctx, f.admin, "PAT", false)
 	wantCode(t, err, core.CodeAccountExists)
 
-	// Rotation: issue a new token, then revoke the rest.
-	if n := must[int](t)(f.svc.RevokeAllTokens(ctx, pat, "pat")); n != 2 {
-		t.Fatalf("revoked %d", n)
+	// Revoking every token of its own, with one of them, takes force.
+	_, err = f.svc.RevokeAllTokens(ctx, pat, "pat", false)
+	wantCode(t, err, core.CodeOwnCredential)
+	if toks := must[[]core.Token](t)(f.svc.RevokeAllTokens(ctx, pat, "pat", true)); len(toks) != 2 || toks[1].ID != mine.ID || toks[1].RevokedAt == nil {
+		t.Fatalf("revoked %+v", toks)
 	}
 	_, err = f.svc.AuthenticateToken(ctx, mine.Secret)
+	wantCode(t, err, core.CodeUnauthorized)
+}
+
+func TestRevokeTokenNamesItsAccount(t *testing.T) {
+	f := newTokenFixture(t)
+	ctx := t.Context()
+	pat := f.account(t, "pat")
+	sam := f.account(t, "sam")
+	laptop := must[core.IssuedToken](t)(f.svc.IssueToken(ctx, pat, "pat", "laptop", 0))
+	sams := must[[]core.Token](t)(f.svc.ListTokens(ctx, f.admin, "sam"))[0]
+
+	// An ID from another account is not found, even for a server admin.
+	_, err := f.svc.RevokeToken(ctx, f.admin, "pat", sams.ID, false)
+	wantCode(t, err, core.CodeTokenNotFound)
+	_, err = f.svc.RevokeToken(ctx, f.admin, "pat", 999, false)
+	wantCode(t, err, core.CodeTokenNotFound)
+	// Without rights to the account, the caller learns nothing about it.
+	_, err = f.svc.RevokeToken(ctx, pat, "sam", sams.ID, false)
+	wantCode(t, err, core.CodeForbidden)
+	_, err = f.svc.RevokeToken(ctx, pat, "nobody", 1, false)
+	wantCode(t, err, core.CodeForbidden)
+
+	got := must[[]core.Token](t)(f.svc.RevokeToken(ctx, pat, "pat", laptop.ID, false))
+	if len(got) != 1 || got[0].ID != laptop.ID || got[0].Account != "pat" || got[0].Label != "laptop" || got[0].RevokedAt == nil {
+		t.Fatalf("revoked %+v", got)
+	}
+	// Again: no error, and nothing revoked.
+	if again := must[[]core.Token](t)(f.svc.RevokeToken(ctx, pat, "pat", laptop.ID, false)); len(again) != 0 {
+		t.Fatalf("revoked again %+v", again)
+	}
+	if toks := must[[]core.Token](t)(f.svc.RevokeAllTokens(ctx, f.admin, "pat", false)); len(toks) != 1 || toks[0].ID == laptop.ID {
+		t.Fatalf("revoke-all after one = %+v", toks)
+	}
+	_, err = f.svc.AuthenticateToken(ctx, laptop.Secret)
+	wantCode(t, err, core.CodeUnauthorized)
+	if _, err := f.svc.Whoami(ctx, sam); err != nil {
+		t.Fatalf("sam's token: %v", err)
+	}
+}
+
+func TestRevokingTheCallersOwnTokenTakesForce(t *testing.T) {
+	f := newTokenFixture(t)
+	ctx := t.Context()
+	f.account(t, "pat")
+	tok := must[core.IssuedToken](t)(f.svc.IssueToken(ctx, f.admin, "pat", "", 0))
+	p := f.login(t, tok.Secret)
+	_, err := f.svc.RevokeToken(ctx, p, "pat", tok.ID, false)
+	wantCode(t, err, core.CodeOwnCredential)
+
+	// A browser session counts as the token it came from.
+	secret, _, err := f.svc.CreateSession(ctx, p, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sp := must[core.Principal](t)(f.svc.AuthenticateSession(ctx, secret))
+	_, err = f.svc.RevokeToken(ctx, sp, "pat", tok.ID, false)
+	wantCode(t, err, core.CodeOwnCredential)
+	_, err = f.svc.RevokeAllTokens(ctx, sp, "pat", false)
+	wantCode(t, err, core.CodeOwnCredential)
+
+	// A server admin revoking someone else's token needs no force.
+	if _, err := f.svc.RevokeToken(ctx, f.admin, "pat", tok.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	// Nor does the caller revoking its own token by force.
+	own := must[core.IssuedToken](t)(f.svc.IssueToken(ctx, f.admin, "pat", "", 0))
+	op := f.login(t, own.Secret)
+	if _, err := f.svc.RevokeToken(ctx, op, "pat", own.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.svc.Whoami(ctx, op)
 	wantCode(t, err, core.CodeUnauthorized)
 }
 

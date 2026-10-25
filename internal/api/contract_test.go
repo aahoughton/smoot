@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -161,7 +162,9 @@ func TestResponsesMatchTheContract(t *testing.T) {
 	call("GET", "/v1/feedback?namespace=default&conversation=design&since=2030-01-01T00:00:00Z&limit=10", nil)
 	call("GET", "/v1/feedback/1", nil)
 	call("GET", "/v1/feedback/2", nil)
-	call("POST", "/v1/accounts/pat/tokens/revoke", map[string]any{})
+	call("POST", fmt.Sprintf("/v1/accounts/pat/tokens/%v/revoke", issued["id"]), map[string]any{})
+	call("POST", "/v1/accounts/pat/tokens/revoke", map[string]any{"force": false})
+	call("POST", "/v1/accounts/root/tokens/1/revoke", map[string]any{})
 	call("DELETE", "/v1/namespaces/default/members/pat", nil)
 	call("POST", c+"/messages", map[string]any{"agent": "alice", "body": "late"})
 

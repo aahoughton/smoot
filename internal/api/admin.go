@@ -109,13 +109,23 @@ func (h *handler) issueToken(w http.ResponseWriter, r *http.Request, p core.Prin
 // maxTokenTTLSeconds is the longest token lifetime, 100 years.
 const maxTokenTTLSeconds = 100 * 366 * 24 * 3600
 
+// revokeRequest is the body of both revoke calls. Force allows revoking
+// the token the request itself uses.
+type revokeRequest struct {
+	Force bool `json:"force"`
+}
+
 func (h *handler) revokeAllTokens(w http.ResponseWriter, r *http.Request, p core.Principal) error {
-	n, err := h.svc.RevokeAllTokens(r.Context(), p, r.PathValue("account"))
+	var req revokeRequest
+	if err := h.decode(w, r, &req); err != nil {
+		return err
+	}
+	ts, err := h.svc.RevokeAllTokens(r.Context(), p, r.PathValue("account"), req.Force)
 	if err != nil {
 		return err
 	}
-	h.audit(r, p, "revoke_all_tokens", r.PathValue("account"), "revoked", n)
-	writeJSON(w, http.StatusOK, map[string]any{"revoked": n})
+	h.audit(r, p, "revoke_all_tokens", r.PathValue("account"), "revoked", len(ts))
+	writeJSON(w, http.StatusOK, map[string]any{"tokens": ts})
 	return nil
 }
 
@@ -124,11 +134,16 @@ func (h *handler) revokeToken(w http.ResponseWriter, r *http.Request, p core.Pri
 	if err != nil || id < 1 {
 		return invalid("token id must be a positive integer")
 	}
-	if err := h.svc.RevokeToken(r.Context(), p, id); err != nil {
+	var req revokeRequest
+	if err := h.decode(w, r, &req); err != nil {
 		return err
 	}
-	h.audit(r, p, "revoke_token", strconv.FormatInt(id, 10))
-	w.WriteHeader(http.StatusNoContent)
+	ts, err := h.svc.RevokeToken(r.Context(), p, r.PathValue("account"), id, req.Force)
+	if err != nil {
+		return err
+	}
+	h.audit(r, p, "revoke_token", r.PathValue("account"), "token", id, "revoked", len(ts))
+	writeJSON(w, http.StatusOK, map[string]any{"tokens": ts})
 	return nil
 }
 

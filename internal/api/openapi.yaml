@@ -159,32 +159,67 @@ paths:
       - $ref: "#/components/parameters/account"
     post:
       operationId: revokeAllTokens
-      description: Revokes every token of the account, and the browser sessions they started.
+      description: >
+        The account itself or a server admin. Revokes every token of the
+        account, and the browser sessions they started. If they include the
+        token the request uses, force must be true (own_credential).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RevokeRequest" }
       responses:
         "200":
-          description: How many tokens were revoked.
+          description: The tokens this call revoked.
           content:
             application/json:
               schema:
                 type: object
-                required: [revoked]
+                required: [tokens]
                 properties:
-                  revoked: { type: integer }
+                  tokens:
+                    type: array
+                    items: { $ref: "#/components/schemas/Token" }
+        "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
 
-  /v1/tokens/{id}:
+  /v1/accounts/{account}/tokens/{id}/revoke:
     parameters:
+      - $ref: "#/components/parameters/account"
       - name: id
         in: path
         required: true
         schema: { type: integer, minimum: 1 }
-    delete:
+    post:
       operationId: revokeToken
-      description: The token's account or a server admin. Also ends the browser sessions it started.
+      description: >
+        The account itself or a server admin. Also ends the browser sessions
+        the token started. A token of another account is token_not_found.
+        Revoking the token the request uses needs force (own_credential).
+        Revoking a revoked token changes nothing and returns no tokens.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RevokeRequest" }
       responses:
-        "204": { description: Revoked. }
+        "200":
+          description: The token, if this call revoked it.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tokens]
+                properties:
+                  tokens:
+                    type: array
+                    items: { $ref: "#/components/schemas/Token" }
+        "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
 
   /v1/server:
     get:
@@ -1060,6 +1095,13 @@ components:
         disabled: { type: boolean }
         created_at: { type: string, format: date-time }
 
+    RevokeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        force:
+          type: boolean
+          description: Allow revoking the token the request itself uses.
     Token:
       type: object
       required: [id, account, label, created_at]
@@ -1320,6 +1362,7 @@ components:
                 - token_not_found
                 - feedback_not_found
                 - last_admin
+                - own_credential
                 - rate_limited
                 - busy
                 - idempotency_conflict

@@ -102,9 +102,14 @@ func TestAdminFlow(t *testing.T) {
 	if got := root.do("DELETE", "/v1/namespaces/default/members/pat", nil, nil); got != http.StatusNoContent {
 		t.Fatalf("remove member = %d", got)
 	}
-	root.wantError("DELETE", "/v1/tokens/999", nil, http.StatusNotFound, "token_not_found")
-	if got := pat.do("DELETE", "/v1/tokens/"+strconv.FormatInt(issued.ID, 10), nil, nil); got != http.StatusNoContent {
-		t.Fatalf("self revoke = %d", got)
+	revoke := "/v1/accounts/pat/tokens/" + strconv.FormatInt(issued.ID, 10) + "/revoke"
+	root.wantError("POST", "/v1/accounts/pat/tokens/999/revoke", map[string]any{}, http.StatusNotFound, "token_not_found")
+	root.wantError("POST", "/v1/accounts/root/tokens/"+strconv.FormatInt(issued.ID, 10)+"/revoke", map[string]any{}, http.StatusNotFound, "token_not_found")
+	pat.wantError("POST", revoke, map[string]any{}, http.StatusConflict, "own_credential")
+	pat.wantError("POST", "/v1/accounts/pat/tokens/revoke", map[string]any{}, http.StatusConflict, "own_credential")
+	pat.ok("POST", revoke, map[string]any{"force": true}, http.StatusOK, &toks)
+	if len(toks.Tokens) != 1 || toks.Tokens[0].ID != issued.ID || toks.Tokens[0].RevokedAt == nil {
+		t.Fatalf("self revoke = %+v", toks)
 	}
 	pat.wantError("GET", "/v1/whoami", nil, http.StatusUnauthorized, "unauthorized")
 }

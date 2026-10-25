@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -31,9 +32,8 @@ db bootstrap or smoot db recover.
   accounts disable|enable|promote|demote NAME
   tokens list ACCOUNT
   tokens issue ACCOUNT [--label TEXT] [--ttl DURATION]
-  tokens revoke ID                  ID is server-wide, from tokens list or
-                                    tokens issue
-  tokens revoke-all ACCOUNT
+  tokens revoke ACCOUNT ID [--dry-run] [--force]
+  tokens revoke-all ACCOUNT [--dry-run] [--force]
   members list NAMESPACE
   members set NAMESPACE ACCOUNT viewer|observer|member|admin
   members remove NAMESPACE ACCOUNT
@@ -45,7 +45,10 @@ db bootstrap or smoot db recover.
   feedback show ID                  one note in full, with its conversation
 
 A new token is printed once; store it where the client reads it
-(SMOOT_TOKEN). Server admins manage accounts and namespaces; an account
+(SMOOT_TOKEN). Token IDs are numbered across the server; tokens list and
+tokens issue show them. Revoking cannot be undone: --dry-run shows what
+would be revoked, and --force is needed to revoke the token the command
+itself uses. Server admins manage accounts and namespaces; an account
 manages its own tokens; namespace admins manage their members.
 `
 
@@ -142,24 +145,55 @@ func runAdminRemote(ctx context.Context, args []string, stdout, stderr io.Writer
 				return err
 			}
 		}},
-		"tokens revoke": noFlags("ID", 1, func(ctx context.Context, cl *client.Client, a []string, out io.Writer) error {
-			id, err := strconv.ParseInt(a[0], 10, 64)
-			if err != nil {
-				return fmt.Errorf("token id %q is not a number", a[0])
+		"tokens revoke": {"ACCOUNT ID [--dry-run] [--force]", 2, func(fs *flag.FlagSet) adminRun {
+			dryRun, force := revokeFlags(fs)
+			return func(ctx context.Context, cl *client.Client, a []string, out io.Writer) error {
+				id, err := strconv.ParseInt(a[1], 10, 64)
+				if err != nil || id < 1 {
+					return fmt.Errorf("token id %q is not a positive integer", a[1])
+				}
+				var ts []core.Token
+				if *dryRun {
+					ts, err = cl.ListTokens(ctx, a[0])
+					if err != nil {
+						return err
+					}
+					i := slices.IndexFunc(ts, func(t core.Token) bool { return t.ID == id })
+					if i < 0 {
+						return fmt.Errorf("%s: token %d of %s not found", core.CodeTokenNotFound, id, a[0])
+					}
+					ts = slices.DeleteFunc(ts[i:i+1], revoked)
+				} else if ts, err = cl.RevokeToken(ctx, a[0], id, *force); err != nil {
+					return err
+				}
+				if len(ts) == 0 {
+					fmt.Fprintf(out, "token %d of %s is already revoked\n", id, a[0])
+				}
+				printRevoked(out, ts, *dryRun)
+				return nil
 			}
-			if err := cl.RevokeToken(ctx, id); err != nil {
-				return err
+		}},
+		"tokens revoke-all": {"ACCOUNT [--dry-run] [--force]", 1, func(fs *flag.FlagSet) adminRun {
+			dryRun, force := revokeFlags(fs)
+			return func(ctx context.Context, cl *client.Client, a []string, out io.Writer) error {
+				var ts []core.Token
+				var err error
+				if *dryRun {
+					ts, err = cl.ListTokens(ctx, a[0])
+					ts = slices.DeleteFunc(ts, revoked)
+				} else {
+					ts, err = cl.RevokeAllTokens(ctx, a[0], *force)
+				}
+				if err != nil {
+					return err
+				}
+				if len(ts) == 0 {
+					fmt.Fprintf(out, "%s has no tokens to revoke\n", a[0])
+				}
+				printRevoked(out, ts, *dryRun)
+				return nil
 			}
-			fmt.Fprintf(out, "revoked token %d\n", id)
-			return nil
-		}),
-		"tokens revoke-all": noFlags("ACCOUNT", 1, func(ctx context.Context, cl *client.Client, a []string, out io.Writer) error {
-			n, err := cl.RevokeAllTokens(ctx, a[0])
-			if err == nil {
-				fmt.Fprintf(out, "revoked %d tokens of %s\n", n, a[0])
-			}
-			return err
-		}),
+		}},
 		"members list": noFlags("NAMESPACE", 1, func(ctx context.Context, cl *client.Client, a []string, out io.Writer) error {
 			ms, err := cl.ListMembers(ctx, a[0])
 			if err != nil {
@@ -357,6 +391,35 @@ func printTokens(out io.Writer, ts []core.Token) {
 			dateOr(t.LastUsedAt, "never"), dateOr(t.ExpiresAt, "never"), dateOr(t.RevokedAt, "-"))
 	}
 	_ = tw.Flush()
+}
+
+func revokeFlags(fs *flag.FlagSet) (dryRun, force *bool) {
+	dryRun = fs.Bool("dry-run", false, "show what would be revoked without revoking it")
+	force = fs.Bool("force", false, "allow revoking the token this command uses")
+	return dryRun, force
+}
+
+func revoked(t core.Token) bool { return t.RevokedAt != nil }
+
+// printRevoked prints one line per token, saying what was revoked or, for a
+// dry run, what would be.
+func printRevoked(out io.Writer, ts []core.Token, dryRun bool) {
+	verb := "revoked"
+	if dryRun {
+		verb = "would revoke"
+	}
+	for _, t := range ts {
+		var about []string
+		if t.Label != "" {
+			about = append(about, shown(t.Label))
+		}
+		if t.LastUsedAt == nil {
+			about = append(about, "never used")
+		} else {
+			about = append(about, "last used "+t.LastUsedAt.Format(time.DateOnly))
+		}
+		fmt.Fprintf(out, "%s token %d of %s (%s)\n", verb, t.ID, shown(t.Account), strings.Join(about, ", "))
+	}
 }
 
 // shown replaces the characters a terminal would act on (controls and
