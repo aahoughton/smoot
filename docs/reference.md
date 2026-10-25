@@ -101,9 +101,12 @@ smoot whoami
 
 Tokens are shown once and stored only as hashes.  An account manages its own
 tokens (`tokens issue`, `tokens list`, `tokens revoke`, `tokens revoke-all`);
-rotate by issuing a new one, then revoking the old.  If the last server admin
-loses its token, `smoot db recover --db PATH --name NAME` issues a new one;
-like `db bootstrap`, it works on the database file and needs access to it.
+rotate by issuing a new one, then revoking the old.  Token IDs are numbered
+across the whole server and never reused, so `tokens revoke` takes only the
+ID; `tokens issue` prints it and `tokens list ACCOUNT` shows it.  If the last
+server admin loses its token, `smoot db recover --db PATH --name NAME` issues
+a new one; like `db bootstrap`, it works on the database file and needs
+access to it.
 
 Commands that send a token take it from `--token`, then `--token-file`,
 then `SMOOT_TOKEN`, then `SMOOT_TOKEN_FILE`, then the default token file,

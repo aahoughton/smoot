@@ -31,7 +31,8 @@ db bootstrap or smoot db recover.
   accounts disable|enable|promote|demote NAME
   tokens list ACCOUNT
   tokens issue ACCOUNT [--label TEXT] [--ttl DURATION]
-  tokens revoke ID
+  tokens revoke ID                  ID is server-wide, from tokens list or
+                                    tokens issue
   tokens revoke-all ACCOUNT
   members list NAMESPACE
   members set NAMESPACE ACCOUNT viewer|observer|member|admin
