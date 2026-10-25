@@ -534,7 +534,12 @@ func TestSessionsSurviveTokenRotation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.RevokeToken(t.Context(), admin, first.ID); err != nil {
+	// Rotate as a person would: switch to the new token, then revoke the old.
+	rotated, err := svc.AuthenticateToken(t.Context(), second.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.RevokeToken(t.Context(), rotated, first.Account, first.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	tok.set(second.Secret)

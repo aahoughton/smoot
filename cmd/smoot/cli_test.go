@@ -672,7 +672,12 @@ func TestAdminThroughTheServer(t *testing.T) {
 		{[]string{"members", "list", "team"}, "pat      member"},
 		{[]string{"tokens", "issue", "pat", "--label", "laptop", "--ttl", "720h"}, "for pat (shown once):\n" + core.TokenPrefix},
 		{[]string{"tokens", "list", "pat"}, "laptop"},
-		{[]string{"tokens", "revoke-all", "pat"}, "revoked 1 tokens of pat"},
+		{[]string{"tokens", "revoke-all", "pat", "--dry-run"}, "would revoke token 2 of pat (laptop, never used)\n"},
+		{[]string{"tokens", "revoke", "pat", "2", "--dry-run"}, "would revoke token 2 of pat (laptop, never used)\n"},
+		{[]string{"tokens", "revoke", "pat", "2"}, "revoked token 2 of pat (laptop, never used)\n"},
+		{[]string{"tokens", "revoke", "pat", "2"}, "token 2 of pat is already revoked\n"},
+		{[]string{"tokens", "revoke", "pat", "2", "--dry-run"}, "token 2 of pat is already revoked\n"},
+		{[]string{"tokens", "revoke-all", "pat"}, "pat has no tokens to revoke\n"},
 		{[]string{"members", "remove", "team", "pat"}, "pat has no role in team"},
 	}
 	for _, s := range steps {
@@ -680,6 +685,21 @@ func TestAdminThroughTheServer(t *testing.T) {
 		if r.code != exitOK || !strings.Contains(r.stdout, s.want) {
 			t.Fatalf("admin %v = %+v, want %q", s.args, r, s.want)
 		}
+	}
+	// Revoke takes the token's account, and refuses the caller's own token
+	// unless forced.
+	for _, args := range [][]string{{"tokens", "revoke", "root", "2"}, {"tokens", "revoke", "pat", "1", "--dry-run"}} {
+		if r := admin(args...); r.code != exitError || !strings.Contains(r.stderr, "token_not_found: token") {
+			t.Fatalf("admin %v = %+v, want not found", args, r)
+		}
+	}
+	for _, args := range [][]string{{"tokens", "revoke", "root", "1"}, {"tokens", "revoke-all", "root"}} {
+		if r := admin(args...); r.code != exitError || !strings.Contains(r.stderr, "own_credential: token 1 is the one this request uses") {
+			t.Fatalf("admin %v = %+v, want a refusal", args, r)
+		}
+	}
+	if r := admin("tokens", "revoke", "1"); r.code != exitUsage || !strings.Contains(r.stderr, "takes 2 arguments") {
+		t.Fatalf("revoke without account = %+v", r)
 	}
 	if r := admin("accounts", "demote", "root"); r.code != exitOK {
 		t.Fatalf("demote with another admin left = %+v", r)
@@ -703,6 +723,14 @@ func TestAdminThroughTheServer(t *testing.T) {
 	}
 	if r := runCLIInput(t.Context(), url, "", nil, "admin", "accounts", "list"); r.code != exitError || !strings.Contains(r.stderr, "unauthorized") {
 		t.Fatalf("no token = %+v", r)
+	}
+	// Last: with --force, root revokes the token it is using.
+	r := admin("tokens", "revoke", "root", "1", "--force")
+	if want := "revoked token 1 of root (bootstrap, last used "; r.code != exitOK || !strings.HasPrefix(r.stdout, want) {
+		t.Fatalf("forced revoke = %+v, want %q", r, want)
+	}
+	if r := admin("accounts", "list"); r.code != exitError || !strings.Contains(r.stderr, "unauthorized") {
+		t.Fatalf("after revoking its own token = %+v", r)
 	}
 }
 

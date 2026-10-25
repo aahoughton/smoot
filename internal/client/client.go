@@ -427,18 +427,25 @@ func (c *Client) IssueToken(ctx context.Context, account, label string, ttl time
 	return out, err
 }
 
-// RevokeToken revokes one token.
-func (c *Client) RevokeToken(ctx context.Context, id int64) error {
-	return c.do(ctx, http.MethodDelete, "/v1/tokens/"+strconv.FormatInt(id, 10), nil, nil, nil)
+// RevokeToken revokes token id of account and returns it, or none if it
+// was already revoked. force allows revoking the token this client uses.
+func (c *Client) RevokeToken(ctx context.Context, account string, id int64, force bool) ([]core.Token, error) {
+	var out struct {
+		Tokens []core.Token `json:"tokens"`
+	}
+	err := c.do(ctx, http.MethodPost, "/v1/accounts/"+url.PathEscape(account)+"/tokens/"+strconv.FormatInt(id, 10)+"/revoke",
+		nil, map[string]any{"force": force}, &out)
+	return out.Tokens, err
 }
 
-// RevokeAllTokens revokes every token of an account and returns how many.
-func (c *Client) RevokeAllTokens(ctx context.Context, account string) (int, error) {
+// RevokeAllTokens revokes every token of an account and returns the ones
+// it revoked. force allows including the token this client uses.
+func (c *Client) RevokeAllTokens(ctx context.Context, account string, force bool) ([]core.Token, error) {
 	var out struct {
-		Revoked int `json:"revoked"`
+		Tokens []core.Token `json:"tokens"`
 	}
-	err := c.do(ctx, http.MethodPost, "/v1/accounts/"+url.PathEscape(account)+"/tokens/revoke", nil, map[string]any{}, &out)
-	return out.Revoked, err
+	err := c.do(ctx, http.MethodPost, "/v1/accounts/"+url.PathEscape(account)+"/tokens/revoke", nil, map[string]any{"force": force}, &out)
+	return out.Tokens, err
 }
 
 // ListMembers lists a namespace's members.

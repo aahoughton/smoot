@@ -759,7 +759,7 @@ func TestEarlierMessages(t *testing.T) {
 
 // The viewer answers errors with the same status as the JSON API.
 func TestViewerStatusesMatchTheAPI(t *testing.T) {
-	for _, code := range []core.Code{core.CodeNotCoordinator, core.CodeAccountNotFound, core.CodeLastAdmin, core.CodeUnauthorized, core.CodeNameActive} {
+	for _, code := range []core.Code{core.CodeNotCoordinator, core.CodeAccountNotFound, core.CodeLastAdmin, core.CodeOwnCredential, core.CodeUnauthorized, core.CodeNameActive} {
 		if got, want := web.StatusOf(&core.Error{Code: code}), api.StatusFor(code); got != want || got == http.StatusInternalServerError {
 			t.Errorf("%s: viewer %d, API %d", code, got, want)
 		}

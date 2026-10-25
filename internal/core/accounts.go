@@ -502,56 +502,108 @@ func (s *Service) ListTokens(ctx context.Context, p Principal, account string) (
 		WHERE t.account_id = ? ORDER BY t.id`, a.ID)
 }
 
-// RevokeToken revokes one token, and with it the browser sessions it
-// started. The token's own account or a server admin may revoke it.
-func (s *Service) RevokeToken(ctx context.Context, p Principal, id int64) error {
-	var owner int64
-	err := s.db.QueryRowContext(ctx, `SELECT account_id FROM tokens WHERE id = ?`, id).Scan(&owner)
-	if isNoRows(err) {
-		if aerr := s.requireServerAdmin(ctx, p); aerr != nil {
-			return aerr
-		}
-		return errorf(CodeTokenNotFound, "token %d not found", id)
-	}
+// RevokeToken revokes token id of account, and with it the browser
+// sessions it started. It returns the token, or none if it was already
+// revoked. The account itself or a server admin may revoke it. A token of
+// another account is token_not_found. Without force, revoking the token the
+// request is using is own_credential.
+func (s *Service) RevokeToken(ctx context.Context, p Principal, account string, id int64, force bool) ([]Token, error) {
+	a, err := s.accountByName(ctx, s.db, account)
 	if err != nil {
-		return err
+		return nil, s.hideAccount(ctx, p, err)
 	}
-	if err := s.requireSelfOrAdmin(ctx, p, Account{ID: owner}); err != nil {
-		return err
+	if err := s.requireSelfOrAdmin(ctx, p, a); err != nil {
+		return nil, err
 	}
 	if err := s.limitWrite(p); err != nil {
-		return err
+		return nil, err
 	}
-	return s.writeSelfOrAdmin(ctx, p, owner, func(tx *wtx) error {
-		_, err := tx.ExecContext(ctx, `UPDATE tokens SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL`, ms(s.now()), id)
+	var ts []Token
+	err = s.writeSelfOrAdmin(ctx, p, a.ID, func(tx *wtx) error {
+		var exists bool
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM tokens WHERE account_id = ? AND id = ?`,
+			a.ID, id).Scan(&exists); err != nil {
+			return err
+		}
+		if !exists {
+			return errorf(CodeTokenNotFound, "token %d of %s not found", id, a.Name)
+		}
+		var err error
+		ts, err = s.revokeTokens(ctx, tx, p, `t.account_id = ? AND t.id = ?`, []any{a.ID, id}, force)
 		return err
 	})
+	return ts, err
 }
 
 // RevokeAllTokens revokes every token of an account, and with them its
-// browser sessions. It returns how many were revoked.
-func (s *Service) RevokeAllTokens(ctx context.Context, p Principal, account string) (int, error) {
+// browser sessions, and returns the tokens it revoked. Without force, an
+// account revoking its own tokens with one of them is own_credential.
+func (s *Service) RevokeAllTokens(ctx context.Context, p Principal, account string, force bool) ([]Token, error) {
 	a, err := s.accountByName(ctx, s.db, account)
 	if err != nil {
-		return 0, s.hideAccount(ctx, p, err)
+		return nil, s.hideAccount(ctx, p, err)
 	}
 	if err := s.requireSelfOrAdmin(ctx, p, a); err != nil {
-		return 0, err
+		return nil, err
 	}
 	if err := s.limitWrite(p); err != nil {
-		return 0, err
+		return nil, err
 	}
-	var n int64
+	var ts []Token
 	err = s.writeSelfOrAdmin(ctx, p, a.ID, func(tx *wtx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE tokens SET revoked_at = ? WHERE account_id = ? AND revoked_at IS NULL`,
-			ms(s.now()), a.ID)
-		if err != nil {
-			return err
-		}
-		n, err = res.RowsAffected()
+		var err error
+		ts, err = s.revokeTokens(ctx, tx, p, `t.account_id = ?`, []any{a.ID}, force)
 		return err
 	})
-	return int(n), err
+	return ts, err
+}
+
+// revokeTokens revokes the unrevoked tokens matching where and returns
+// them. Unless force, it refuses if they include the token p authenticated
+// with, directly or through a browser session.
+func (s *Service) revokeTokens(ctx context.Context, tx *wtx, p Principal, where string, args []any, force bool) ([]Token, error) {
+	query := `SELECT ` + tokenColumns + ` FROM tokens t JOIN accounts a ON a.id = t.account_id
+		WHERE ` + where + ` AND t.revoked_at IS NULL ORDER BY t.id`
+	ts, err := collect(ctx, tx, scanToken, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	if !force {
+		own, err := s.credentialToken(ctx, tx, p)
+		if err != nil {
+			return nil, err
+		}
+		for _, t := range ts {
+			if t.ID == own {
+				return nil, errorf(CodeOwnCredential, "token %d is the one this request uses; pass force to revoke it", t.ID)
+			}
+		}
+	}
+	now := s.now()
+	for i := range ts {
+		if _, err := tx.ExecContext(ctx, `UPDATE tokens SET revoked_at = ? WHERE id = ?`, ms(now), ts[i].ID); err != nil {
+			return nil, err
+		}
+		at := fromMS(ms(now))
+		ts[i].RevokedAt = &at
+	}
+	return ts, nil
+}
+
+// credentialToken returns the id of the token p authenticated with, or 0.
+func (s *Service) credentialToken(ctx context.Context, q querier, p Principal) (int64, error) {
+	switch p.Credential.Kind {
+	case CredentialToken:
+		return p.Credential.ID, nil
+	case CredentialSession:
+		var id sql.NullInt64
+		err := q.QueryRowContext(ctx, `SELECT source_token_id FROM browser_sessions WHERE id = ?`, p.Credential.ID).Scan(&id)
+		if isNoRows(err) {
+			return 0, nil
+		}
+		return id.Int64, err
+	}
+	return 0, nil
 }
 
 // SetMembership gives an account a role in a namespace, replacing any it
