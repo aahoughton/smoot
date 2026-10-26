@@ -221,23 +221,11 @@ func kindTag(w *wording.Wording, kind string, yours bool) string {
 // becomes a space here, so no name can start a line of its own.
 func attachmentText(w *wording.Wording, a core.Attachment) string {
 	a.Name = strings.ReplaceAll(core.NormalizeLineBreaks(a.Name), "\n", " ")
-	data := map[string]any{"Name": a.Name, "Size": formatSize(a.Size), "SHA": a.SHA256[:min(len(a.SHA256), 12)], "Gone": a.Gone}
+	data := map[string]any{"Name": a.Name, "Size": core.FormatSize(a.Size), "SHA": a.SHA256[:min(len(a.SHA256), 12)], "Gone": a.Gone}
 	if a.Gone != "" {
 		return w.Phrase(wording.AttachmentUnavailable, data)
 	}
 	return w.Phrase(wording.AttachmentRecord, data)
-}
-
-// formatSize writes a byte count for people: 512 B, 1.5 KiB, 2.0 MiB.
-func formatSize(n int64) string {
-	switch {
-	case n < 1<<10:
-		return fmt.Sprintf("%d B", n)
-	case n < 1<<20:
-		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
-	default:
-		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
-	}
 }
 
 func replyTag(replyTo *int64) string {

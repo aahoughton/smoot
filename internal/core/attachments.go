@@ -60,6 +60,18 @@ type Attachment struct {
 	Gone string `json:"gone,omitempty"`
 }
 
+// FormatSize writes a byte count for people: 512 B, 1.5 KiB, 2.0 MiB.
+func FormatSize(n int64) string {
+	switch {
+	case n < 1<<10:
+		return strconv.FormatInt(n, 10) + " B"
+	case n < 1<<20:
+		return strconv.FormatFloat(float64(n)/(1<<10), 'f', 1, 64) + " KiB"
+	default:
+		return strconv.FormatFloat(float64(n)/(1<<20), 'f', 1, 64) + " MiB"
+	}
+}
+
 // AttachmentsEnabled reports whether participants may attach files
 // (Options.Attachments).
 func (s *Service) AttachmentsEnabled() bool { return s.opts.Attachments }

@@ -109,6 +109,17 @@ concluded
 ## kind_observer
 observer
 
+## kind_attachment
+file
+
+## attachment
+fields: Name, Size, SHA
+{{.Name}}  {{.Size}}  sha256 {{.SHA}}
+
+## attachment_gone
+fields: Name, Size, Gone
+{{.Name}}  {{.Size}}  no longer downloadable: {{.Gone}}
+
 ## reply_to
 fields: Seq
 re #{{.Seq}}

@@ -175,6 +175,9 @@ func Handler(svc *core.Service, authn auth.Authenticator, opts Options) (http.Ha
 	mux.HandleFunc("GET /n/{ns}/c/{conv}", v.conversation)
 	mux.HandleFunc("GET /n/{ns}/c/{conv}/events", v.events)
 	mux.HandleFunc("POST /n/{ns}/c/{conv}/observe", v.observe)
+	if svc != nil && svc.AttachmentsEnabled() {
+		mux.HandleFunc("GET /n/{ns}/c/{conv}/files/{seq}", v.download)
+	}
 	mux.Handle("GET /static/", v.static)
 	if opts.Login {
 		mux.HandleFunc("GET /login", v.loginPage)
@@ -203,6 +206,7 @@ func (v *viewer) funcs() template.FuncMap {
 		"tone":     toneClass,
 		"initials": initials,
 		"datetime": func(t any) string { return timeOf(t).In(v.opts.Location).Format("Jan 2 15:04") },
+		"size":     core.FormatSize,
 	}
 }
 
@@ -752,9 +756,39 @@ func (v *viewer) snapshot(w http.ResponseWriter, c core.Conversation) error {
 	return v.event(w, "about", "", c)
 }
 
-// linker returns the address of a message in conversation name.
-func (v *viewer) linker(ns, name string) func(seq int64) string {
-	return func(seq int64) string { return messageLink(ns, name, seq, v.opts.ShownMessages) }
+// linker returns the addresses of messages and attachments in
+// conversation name.
+func (v *viewer) linker(ns, name string) links {
+	l := links{message: func(seq int64) string { return messageLink(ns, name, seq, v.opts.ShownMessages) }}
+	if v.svc.AttachmentsEnabled() {
+		l.download = func(seq int64) string { return "/n/" + ns + "/c/" + name + "/files/" + strconv.FormatInt(seq, 10) }
+	}
+	return l
+}
+
+// download sends an attachment's file. The download is recorded under the
+// signed-in account's name or, with auth off, the name last used for an
+// observer comment ("viewer" if none).
+func (v *viewer) download(w http.ResponseWriter, r *http.Request) {
+	p, _, ok := v.principal(w, r)
+	if !ok {
+		return
+	}
+	seq, err := strconv.ParseInt(r.PathValue("seq"), 10, 64)
+	if err != nil || seq < 1 {
+		v.fail(w, &core.Error{Code: core.CodeInvalid, Message: "no such attachment"}, Page{})
+		return
+	}
+	observer := "viewer"
+	if ck, err := r.Cookie(observerCookie); err == nil && core.ValidName(ck.Value) {
+		observer = ck.Value
+	}
+	d, err := v.svc.Fetch(r.Context(), p, r.PathValue("ns"), r.PathValue("conv"), core.FetchParams{Seq: seq, Observer: observer})
+	if err != nil {
+		v.fail(w, err, Page{})
+		return
+	}
+	api.WriteDownload(w, d)
 }
 
 // displayable drops bidirectional controls from the free text of a

@@ -115,6 +115,8 @@ func (r renderer) message(m core.Message, prev *core.Message, unseen []int64, gu
 		head += "  " + r.st.open.Render(r.sk.say("kind_conclude", nil))
 	case core.KindObserver:
 		head += "  " + r.st.observer.Render(r.sk.say("kind_observer", nil))
+	case core.KindAttachment:
+		head += "  " + r.st.faint.Render(r.sk.say("kind_attachment", nil))
 	}
 	if m.ReplyTo != nil {
 		head += "  " + r.st.faint.Render(r.sk.say("reply_to", map[string]any{"Seq": *m.ReplyTo}))
@@ -123,6 +125,16 @@ func (r renderer) message(m core.Message, prev *core.Message, unseen []int64, gu
 		head += "  " + r.st.missed.Render(r.sk.say("missed", map[string]any{"Seqs": unseen[:min(len(unseen), 3)], "N": len(unseen)}))
 	}
 	out := []string{seq + " " + bar + " " + ansi.Truncate(head, max(inner, minWidth), r.st.g.more)}
+	if a := m.Attachment; a != nil {
+		key, data := "attachment", map[string]any{"Name": sanitize(a.Name), "Size": core.FormatSize(a.Size), "SHA": a.SHA256[:min(len(a.SHA256), 12)]}
+		if a.Gone != "" {
+			key, data["Gone"] = "attachment_gone", a.Gone
+		}
+		for _, l := range wrap(words(oneLine(r.sk.say(key, data)), r.st.fg), max(inner, minWidth)) {
+			out = append(out, blank+" "+bar+" "+l)
+		}
+		return out
+	}
 	for _, l := range renderBody(m.Body, inner, r.st, r.people) {
 		out = append(out, blank+" "+bar+" "+l)
 	}

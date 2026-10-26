@@ -23,14 +23,26 @@ type Message struct {
 	// Unseen holds the seqs of messages from others that the author had
 	// not read when posting this one (see core.Unseen).
 	Unseen []int64
+	// Download is where to download an attachment's file; empty when its
+	// bytes are gone or the server has attachments off.
+	Download string
 }
 
-// newMessage wraps m for the message template. link gives the address
-// of a message in m's conversation.
-func newMessage(m core.Message, people markdown.People, prev *core.Message, link func(seq int64) string) Message {
+// links give the addresses of a conversation's messages, and of its
+// attachments' files (nil when the server has attachments off).
+type links struct {
+	message  func(seq int64) string
+	download func(seq int64) string
+}
+
+// newMessage wraps m for the message template.
+func newMessage(m core.Message, people markdown.People, prev *core.Message, l links) Message {
 	msg := Message{Message: m, People: people, Prev: prev}
 	if m.Kind == core.KindConclude {
-		msg.Refs = markdown.Refs{Below: m.Seq, Link: link}
+		msg.Refs = markdown.Refs{Below: m.Seq, Link: l.message}
+	}
+	if m.Attachment != nil && m.Attachment.Gone == "" && l.download != nil {
+		msg.Download = l.download(m.Seq)
 	}
 	return msg
 }

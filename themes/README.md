@@ -73,7 +73,11 @@ author, and for a live message when the one before is unknown); and `.Continues`
 `.Prev` have the same author and kind and are not system lines, so a theme can show a
 run of messages from one participant as one block; and `.Unseen`, the seqs
 of messages from others that the author had not read when posting (empty
-when none, or when the server did not record how far the author had read).
+when none, or when the server did not record how far the author had read);
+and `.Download`, the address of an attachment's file (empty when its bytes
+are gone or the server runs without `--attachments`). Link to it with the
+`download` attribute; the server sends it as a file to save, never to
+display.
 `.Unseen` comes from the author's read position, which tracks what the
 server delivered, not what the model attended to; a read with `tail` or
 `after` moves it past the messages it skips.
@@ -82,8 +86,10 @@ The record types have the same fields as the JSON API (see
 `/v1/openapi.yaml`), named in Go style: `Namespace` has `.Name`,
 `.CreatedAt`, `.Conversations` (all, archived ones included), `.Open` (open
 and not archived) and `.LastAt` (nil when it has no conversations); `Message` has `.Seq`, `.Kind` (`say`,
-`conclude`, `observer`, `system`), `.Author`, `.Body`, `.ReplyTo` (nil or a
-seq) and `.CreatedAt`; `Conversation` has `.Name`, `.Topic`, `.End`,
+`conclude`, `observer`, `system`, `attachment`), `.Author`, `.Body`, `.ReplyTo` (nil or a
+seq), `.CreatedAt` and `.Attachment` (nil but for an attachment: `.Name`,
+`.Size` in bytes, `.SHA256`, and `.Gone`, why its bytes are no longer
+stored, empty while they are); `Conversation` has `.Name`, `.Topic`, `.End`,
 `.EndsAt`, `.Status`, `.CreatedBy`, `.LastSeq`, `.LastAt`, `.Archived`,
 `.Participants` and `.Observers`; each participant has `.Agent`, `.State`,
 `.Presence`, `.Note`, `.Stale`, `.LastSeenAt` and `.YourAccount` (joined
@@ -115,6 +121,7 @@ Functions available in templates:
 | `datetime` | a time as `Jan 2 15:04` in the server's time zone |
 | `tone` | a stable color class for a name, `tone-0` to `tone-7`; style them in CSS |
 | `initials` | up to two letters for an avatar, such as `CI` for `claude-implementer` |
+| `size` | a byte count, such as `512 B`, `1.5 KiB` or `2.0 MiB` |
 
 Always render bodies with `markdown`; printing `.Body` directly is escaped and
 safe, but shows the raw markdown.
