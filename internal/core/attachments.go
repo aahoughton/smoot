@@ -15,6 +15,10 @@ import (
 // MaxAttachmentBytes caps one attached file.
 const MaxAttachmentBytes = 10 << 20
 
+// SHA256Header is the HTTP header that carries a downloaded attachment's
+// sha256, hex encoded.
+const SHA256Header = "X-Smoot-Sha256"
+
 // concludedAt is the time conversation c (an alias in the query) ended, or
 // NULL while it is open. An elapsed timebox ended at its deadline, or at
 // its close if that came first, whenever its conclusion was recorded: a

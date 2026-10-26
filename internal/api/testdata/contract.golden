@@ -557,16 +557,89 @@
   }
 }
 
+## POST /v1/namespaces/default/conversations/design/attachments?agent=bob&name=bench+r%C3%A9sults.csv -> Created
+{
+  "message": {
+    "attachment": {
+      "name": "bench résults.csv",
+      "sha256": "2465bebf63caa7464af5811205663cdb69c01db8247394a80abc32a6d14ceb28",
+      "size": 19
+    },
+    "author": "bob",
+    "body": "bench résults.csv",
+    "created_at": "2030-01-02T03:04:05Z",
+    "kind": "attachment",
+    "seq": 7,
+    "your_account": true
+  },
+  "standing": {
+    "conversation": "design",
+    "expected": true,
+    "line": "design: open; you: active, expected; unread: 0; next: wait (reply if needed, then wait; do not end your turn while you are expected)",
+    "namespace": "default",
+    "next": "wait",
+    "replies_to_you": 0,
+    "status": "open",
+    "unread": 0,
+    "you": "active"
+  }
+}
+
+## GET /v1/namespaces/default/conversations/design/attachments/7?agent=bob -> OK
+Content-Type: application/octet-stream
+Content-Disposition: attachment; filename*=utf-8''bench%20r%C3%A9sults.csv
+Content-Length: 19
+X-Content-Type-Options: nosniff
+Cache-Control: no-store
+Content-Security-Policy: sandbox
+X-Smoot-Sha256: 2465bebf63caa7464af5811205663cdb69c01db8247394a80abc32a6d14ceb28
+"policy,hits\nlru,91\n"
+
+## GET /v1/namespaces/default/conversations/design/attachments/7 -> OK
+Content-Type: application/octet-stream
+Content-Disposition: attachment; filename*=utf-8''bench%20r%C3%A9sults.csv
+Content-Length: 19
+X-Content-Type-Options: nosniff
+Cache-Control: no-store
+Content-Security-Policy: sandbox
+X-Smoot-Sha256: 2465bebf63caa7464af5811205663cdb69c01db8247394a80abc32a6d14ceb28
+"policy,hits\nlru,91\n"
+
+## GET /v1/namespaces/default/conversations/design/attachments/6?agent=alice -> Not Found
+{
+  "error": {
+    "code": "attachment_not_found",
+    "message": "#6 in conversation \"design\" is not an attachment"
+  }
+}
+
+## GET /v1/attachments -> OK
+{
+  "bytes": 19,
+  "cap": 1073741824,
+  "conversations": [
+    {
+      "blobs": 1,
+      "bytes": 19,
+      "conversation": "design",
+      "gone": 0,
+      "namespace": "default",
+      "status": "open"
+    }
+  ],
+  "quota": 104857600
+}
+
 ## POST /v1/namespaces/default/conversations/design/conclude -> OK
 {
   "conversation": "design",
   "expected": false,
-  "line": "design: open; you: concluded; unread: 0; next: wait (you concluded; wait until the conversation concludes, since conclusions that differ make you active again; do not end your turn)",
+  "line": "design: open; you: concluded; unread: 1; next: read (read the new messages, then reply or wait)",
   "namespace": "default",
-  "next": "wait",
+  "next": "read",
   "replies_to_you": 0,
   "status": "open",
-  "unread": 0,
+  "unread": 1,
   "you": "concluded"
 }
 
@@ -574,12 +647,12 @@
 {
   "conversation": "design",
   "expected": false,
-  "line": "design: open; you: left; unread: 0; next: join (you left; rejoin to take part; optional: if anything about smoot itself confused you or cost you extra calls, tell its operators with the feedback tool)",
+  "line": "design: open; you: left; unread: 1; next: join (you left; rejoin to take part; optional: if anything about smoot itself confused you or cost you extra calls, tell its operators with the feedback tool)",
   "namespace": "default",
   "next": "join",
   "replies_to_you": 0,
   "status": "open",
-  "unread": 0,
+  "unread": 1,
   "you": "left"
 }
 
@@ -587,12 +660,12 @@
 {
   "conversation": "design",
   "expected": false,
-  "line": "design: concluded; you: concluded; unread: 6; next: read (the conversation has concluded; read the remaining messages, then stop)",
+  "line": "design: concluded; you: concluded; unread: 9; next: read (the conversation has concluded; read the remaining messages, then stop)",
   "namespace": "default",
   "next": "read",
   "replies_to_you": 0,
   "status": "concluded",
-  "unread": 6,
+  "unread": 9,
   "you": "concluded"
 }
 
@@ -639,7 +712,7 @@
 ## POST /v1/load?as=copy -> Created
 {
   "conversations": 2,
-  "messages": 14,
+  "messages": 17,
   "namespace": "copy"
 }
 
@@ -661,7 +734,7 @@
       "client": "Go-http-client/1.1",
       "first_seen": "2030-01-02T03:04:05Z",
       "last_seen": "2030-01-02T03:04:05Z",
-      "requests": 20,
+      "requests": 23,
       "surface": "api"
     },
     {
@@ -670,7 +743,7 @@
       "client": "Go-http-client/1.1",
       "first_seen": "2030-01-02T03:04:05Z",
       "last_seen": "2030-01-02T03:04:05Z",
-      "requests": 14,
+      "requests": 16,
       "surface": "api"
     }
   ],
@@ -778,6 +851,26 @@
 }
 
 ## DELETE /v1/namespaces/default/members/pat -> No Content
+
+## DELETE /v1/attachments/2465bebf63caa7464af5811205663cdb69c01db8247394a80abc32a6d14ceb28 -> OK
+{
+  "blobs": 1,
+  "bytes": 19
+}
+
+## DELETE /v1/namespaces/copy/conversations/design/attachments -> OK
+{
+  "blobs": 0,
+  "bytes": 0
+}
+
+## GET /v1/namespaces/default/conversations/design/attachments/7?agent=alice -> Gone
+{
+  "error": {
+    "code": "attachment_gone",
+    "message": "the bytes of \"bench r\\u00e9sults.csv\" (#7) are no longer stored: deleted"
+  }
+}
 
 ## POST /v1/namespaces/default/conversations/design/messages -> Conflict
 {

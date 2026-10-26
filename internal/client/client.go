@@ -96,6 +96,8 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	case nil:
 	case jsonl:
 		rd, contentType = b.Reader, "application/jsonl"
+	case octets:
+		rd, contentType = b.Reader, "application/octet-stream"
 	default:
 		raw, err := json.Marshal(b)
 		if err != nil {
@@ -144,6 +146,9 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 
 // jsonl is a request body sent as is, as JSON Lines.
 type jsonl struct{ io.Reader }
+
+// octets is a request body sent as is, as raw bytes.
+type octets struct{ io.Reader }
 
 // LoadResult is what POST /v1/load added.
 type LoadResult struct {
