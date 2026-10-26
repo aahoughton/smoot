@@ -445,7 +445,7 @@ func capBytes(out ReadResult, covered int64, maxBytes int) (ReadResult, int64) {
 // those by skipAuthor if it is set. Callers pass the last_seq they loaded, so
 // a page never mixes in later appends.
 func (s *Service) messages(ctx context.Context, q querier, convID, after, upto int64, limit int, skipAuthor string) ([]Message, error) {
-	return collect(ctx, q, func(rows *sql.Rows) (Message, error) {
+	ms, err := collect(ctx, q, func(rows *sql.Rows) (Message, error) {
 		var m Message
 		var created int64
 		err := rows.Scan(&m.Seq, &m.Kind, &m.Author, &m.Body, &m.ReplyTo, &m.SeenSeq, &created, &m.account)
@@ -454,6 +454,10 @@ func (s *Service) messages(ctx context.Context, q querier, convID, after, upto i
 	}, `SELECT seq, kind, author, body, reply_to, seen_seq, created_at, account_id
 		FROM messages WHERE conversation_id = ? AND seq > ? AND seq <= ? AND (author != ? OR kind = 'observer') ORDER BY seq LIMIT ?`,
 		convID, after, upto, skipAuthor, limit)
+	if err != nil {
+		return nil, err
+	}
+	return ms, withAttachments(ctx, q, convID, ms)
 }
 
 // FollowLimit bounds the messages one Follow call returns.

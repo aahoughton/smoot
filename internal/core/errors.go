@@ -52,6 +52,14 @@ const (
 	// CodeOwnCredential is a revocation, made without force, that would
 	// revoke the token the request is using.
 	CodeOwnCredential Code = "own_credential"
+	// Attachment codes: no attachment at that seq, its bytes are no
+	// longer stored, the file is over MaxAttachmentBytes, or storing it
+	// would pass the conversation's quota or the server's cap.
+	CodeAttachmentNotFound Code = "attachment_not_found"
+	CodeAttachmentGone     Code = "attachment_gone"
+	CodeAttachmentTooLarge Code = "attachment_too_large"
+	CodeAttachmentQuota    Code = "attachment_quota"
+	CodeAttachmentCap      Code = "attachment_cap"
 )
 
 // Error is a failure the caller can act on. Message is short, ASCII, and

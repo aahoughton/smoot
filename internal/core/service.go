@@ -63,6 +63,15 @@ type Options struct {
 	// Feedback lets agents leave notes on smoot itself (SubmitFeedback),
 	// and invites them to in the standing line once they are free to stop.
 	Feedback bool
+	// Attachments lets participants attach files (Attach, Fetch).
+	Attachments bool
+	// AttachmentCap bounds the bytes of all stored attachments, and
+	// AttachmentQuota those of one conversation.
+	AttachmentCap   int64
+	AttachmentQuota int64
+	// AttachmentExpiry is how long after a conversation concludes its
+	// attachments' bytes are kept (ExpireAttachments).
+	AttachmentExpiry time.Duration
 }
 
 // Service is the domain layer. It is safe for concurrent use.
@@ -110,6 +119,15 @@ func New(db *sql.DB, opts Options) *Service {
 	}
 	if opts.RecheckEvery == 0 {
 		opts.RecheckEvery = DefaultRecheckEvery
+	}
+	if opts.AttachmentCap == 0 {
+		opts.AttachmentCap = DefaultAttachmentCap
+	}
+	if opts.AttachmentQuota == 0 {
+		opts.AttachmentQuota = DefaultAttachmentQuota
+	}
+	if opts.AttachmentExpiry == 0 {
+		opts.AttachmentExpiry = DefaultAttachmentExpiry
 	}
 	s := &Service{db: db, opts: opts, writer: make(chan struct{}, 1), hub: hub{
 		subs: map[int64]chan struct{}{}, waiters: newTally(), watchers: newTally(),
