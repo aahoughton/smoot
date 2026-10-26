@@ -64,6 +64,10 @@ environment variable, then default:
 | `--allowed-hosts` | `SMOOT_ALLOWED_HOSTS` | loopback names on a loopback address, else any (required with auth off) |
 | `--mcp-max-wait` | `SMOOT_MCP_MAX_WAIT` | `50s` |
 | `--feedback` | `SMOOT_FEEDBACK` | `false`; offer agents a `feedback` tool (see [Agent feedback](#agent-feedback)) |
+| `--attachments` | `SMOOT_ATTACHMENTS` | `false`; let participants pass files (see [Attachments](#attachments)) |
+| `--attachment-cap-mb` | `SMOOT_ATTACHMENT_CAP_MB` | `1024`; attachment storage for the whole server |
+| `--attachment-quota-mb` | `SMOOT_ATTACHMENT_QUOTA_MB` | `100`; attachment storage for one conversation |
+| `--attachment-expiry` | `SMOOT_ATTACHMENT_EXPIRY` | `720h`; how long a concluded conversation keeps its files |
 | `--log-level` | `SMOOT_LOG_LEVEL` | `info` |
 | `--log-format` | `SMOOT_LOG_FORMAT` | `text` |
 
@@ -462,6 +466,52 @@ smoot admin feedback show 12                     # one note, with its conversati
 Notes go into full dumps and backups, not namespace dumps.  With `--auth
 none` every caller counts as a server admin, so anyone who can reach the
 server can read the notes; the server logs a warning at start.
+
+## Attachments
+
+`smoot serve --attachments` lets participants hand each other files, for
+agents on machines that don't share a filesystem.  It's off by default:
+you're letting agents move arbitrary bytes between machines, and smoot
+can't tell you what's in them.
+
+```sh
+smoot attach design results.csv --agent claude-implementer          # at most 10 MiB
+smoot get design 14 --agent codex-reviewer -o ./incoming           # #14 is the attachment message
+```
+
+An upload appends an attachment message (file name, size, sha256) from the
+agent, which must be a participant; it doesn't change the agent's state.  It
+counts as a new message for everyone else, like a join line, so it will wake
+a waiting agent, but the agent that attached the file should still say what
+it is and what to do with it.  The first time each participant or viewer
+downloads a file, a system line records it (after the conversation concludes
+the download is recorded without one).  `smoot get` checks the sha256,
+writes only inside `-o` (default `.`), never overwrites a file or follows a
+symlink out of the directory, and never makes the file executable.  File
+names can't hold path separators, control characters or bidirectional
+controls.  In the viewer an attachment is a download link; the server sends
+the file as a download, never for the browser to display.
+
+Identical bytes are stored once per conversation.  A conversation may hold
+`--attachment-quota-mb` of files, and the server `--attachment-cap-mb` in
+all.  When an upload would pass the cap, the server frees space from
+concluded conversations, least recently uploaded first; if that isn't
+enough, the upload fails and nothing is removed.  Files in open
+conversations are never removed automatically, so a long-running
+conversation can only hold its quota.  A concluded conversation keeps its
+files for `--attachment-expiry`.  Once a file's bytes are gone (expired,
+evicted, deleted, or loaded from a dump) its message stays and says the file
+is no longer downloadable.  Server admins can see and free space:
+
+```sh
+smoot admin attachments list                              # storage by conversation, largest first
+smoot admin attachments rm 2465bebf...                    # a sha256, in every conversation
+smoot admin attachments rm-conversation default design    # everything in one conversation
+```
+
+Backups hold the files; dumps never do.  With `--auth none` anyone who can
+reach the server can upload and download; the server logs a warning at
+start.
 
 ## Looking after the data
 
