@@ -54,6 +54,8 @@ commands:
   mcp         serve MCP on stdio, relaying to a running server
   wait        block until there is something new for an agent
   status      show where an agent is expected
+  attach      upload a file to a conversation (server runs --attachments)
+  get         download a file attached to a conversation
   tui         browse and follow conversations in the terminal
   client      set up an agent client: its config and skills (smoot client help)
   hook        run as an agent client hook (hook stop)
@@ -103,6 +105,10 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return runWait(ctx, args[1:], stdout, stderr, getenv)
 	case "status":
 		return runStatus(ctx, args[1:], stdout, stderr, getenv)
+	case "attach":
+		return runAttach(ctx, args[1:], stdout, stderr, getenv)
+	case "get":
+		return runGet(ctx, args[1:], stdout, stderr, getenv)
 	case "client":
 		return runClient(ctx, args[1:], stdout, stderr, getenv)
 	case "hook":
@@ -156,7 +162,11 @@ func serve(ctx context.Context, cfg config.Serve, logger *slog.Logger, ready cha
 	}
 	defer func() { _ = db.Close() }()
 	removeStaleScratch(filepath.Dir(cfg.DB), time.Now(), logger)
-	opts := core.Options{Policy: policy, Feedback: cfg.Feedback}
+	opts := core.Options{
+		Policy: policy, Feedback: cfg.Feedback,
+		Attachments: cfg.Attachments, AttachmentCap: cfg.AttachmentCap, AttachmentQuota: cfg.AttachmentQuota,
+		AttachmentExpiry: cfg.AttachmentExpiry,
+	}
 	var failures *auth.Failures
 	if cfg.Auth == config.AuthToken {
 		opts.WriteLimit = cfg.WriteLimit
@@ -209,8 +219,12 @@ func serve(ctx context.Context, cfg config.Serve, logger *slog.Logger, ready cha
 		if cfg.Feedback {
 			logger.Warn("auth is off: anyone who can reach this address can read agent feedback")
 		}
+		if cfg.Attachments {
+			logger.Warn("auth is off: anyone who can reach this address can upload and download files")
+		}
 	}
-	logger.Info("listening", "addr", ln.Addr().String(), "db", cfg.DB, "web", cfg.Web, "feedback", cfg.Feedback, "version", version)
+	logger.Info("listening", "addr", ln.Addr().String(), "db", cfg.DB, "web", cfg.Web, "feedback", cfg.Feedback,
+		"attachments", cfg.Attachments, "version", version)
 	if ready != nil {
 		ready <- ln.Addr().String()
 	}
@@ -230,6 +244,9 @@ func serve(ctx context.Context, cfg config.Serve, logger *slog.Logger, ready cha
 	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
+	if cfg.Attachments {
+		go expireAttachments(base, svc, logger, attachmentSweepEvery)
+	}
 
 	select {
 	case err := <-errc:
@@ -294,5 +311,35 @@ func removeStaleScratch(dir string, now time.Time, logger *slog.Logger) {
 			}
 			logger.Info("removed a stale scratch directory", "path", m)
 		}
+	}
+}
+
+// attachmentSweepEvery is how often the server drops the bytes of
+// attachments in conversations concluded longer ago than the expiry.
+const attachmentSweepEvery = time.Hour
+
+// expireAttachments runs sweepAttachments now and every interval until
+// ctx is done.
+func expireAttachments(ctx context.Context, svc *core.Service, logger *slog.Logger, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		sweepAttachments(ctx, svc, logger)
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+// sweepAttachments expires attachment bytes once and logs what it did.
+func sweepAttachments(ctx context.Context, svc *core.Service, logger *slog.Logger) {
+	n, err := svc.ExpireAttachments(ctx)
+	switch {
+	case err != nil && ctx.Err() == nil:
+		logger.Error("attachment expiry failed", "err", err)
+	case n > 0:
+		logger.Info("attachments expired", "files", n)
 	}
 }
