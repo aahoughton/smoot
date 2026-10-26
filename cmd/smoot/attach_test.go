@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -130,4 +132,52 @@ func TestSweepAttachments(t *testing.T) {
 	if _, err := svc.Fetch(ctx, p, "default", "c", core.FetchParams{Agent: "a", Seq: res.Message.Seq}); core.CodeOf(err) != core.CodeAttachmentGone {
 		t.Fatalf("fetch after expiry: %v", err)
 	}
+}
+
+func TestAdminAttachments(t *testing.T) {
+	url, token, svc := tokenServerWith(t, core.Options{Attachments: true, AttachmentCap: 2 << 20, AttachmentQuota: 1 << 20})
+	ctx := t.Context()
+	admin := func(args ...string) cliResult {
+		return runCLIInput(ctx, url, "", map[string]string{"SMOOT_TOKEN": token}, append([]string{"admin", "attachments"}, args...)...)
+	}
+	if r := admin("list"); r.code != exitOK || r.stdout != "0 B stored of a 2.0 MiB cap; each conversation may hold 1.0 MiB\n" {
+		t.Fatalf("empty list = %+v", r)
+	}
+	root, err := svc.AuthenticateToken(ctx, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []string{"c1", "c2"} {
+		if _, err := svc.Start(ctx, root, "default", core.StartParams{Name: c, Agent: "a", Join: true}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.Attach(ctx, root, "default", c, core.AttachParams{Agent: "a", Name: "x", Data: []byte("same")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := svc.Attach(ctx, root, "default", "c2", core.AttachParams{Agent: "a", Name: "y", Data: make([]byte, 2048)}); err != nil {
+		t.Fatal(err)
+	}
+	r := admin("list")
+	want := "2.0 KiB stored of a 2.0 MiB cap; each conversation may hold 1.0 MiB\n" +
+		"CONVERSATION  STATUS  FILES  STORED   GONE\n" +
+		"default/c2    open    2      2.0 KiB  0\n" +
+		"default/c1    open    1      4 B      0\n"
+	if r.code != exitOK || r.stdout != want {
+		t.Fatalf("list = %+v\nwant:\n%s", r, want)
+	}
+	if r := admin("rm", sha256hex("same")); r.code != exitOK || r.stdout != "dropped 2 stored files (8 B)\n" {
+		t.Fatalf("rm = %+v", r)
+	}
+	if r := admin("rm-conversation", "default", "c2"); r.code != exitOK || r.stdout != "dropped 1 stored file (2.0 KiB)\n" {
+		t.Fatalf("rm-conversation = %+v", r)
+	}
+	if r := admin("rm-conversation", "default", "nope"); r.code != exitError || !strings.Contains(r.stderr, "conversation_not_found") {
+		t.Fatalf("rm missing = %+v", r)
+	}
+}
+
+func sha256hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }

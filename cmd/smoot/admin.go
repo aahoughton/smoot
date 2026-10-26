@@ -43,6 +43,13 @@ db bootstrap or smoot db recover.
                                     newest first; TIME is RFC 3339 or an age
                                     such as 24h
   feedback show ID                  one note in full, with its conversation
+  attachments list                  attachment storage by conversation, with
+                                    the cap and quota (serve --attachments)
+  attachments rm SHA256             drop stored bytes with this sha256, in
+                                    every conversation
+  attachments rm-conversation NAMESPACE CONVERSATION
+                                    drop every stored file in a conversation;
+                                    attachment messages stay, marked deleted
 
 A new token is printed once; store it where the client reads it
 (SMOOT_TOKEN). Token IDs are numbered across the server; tokens list and
@@ -58,7 +65,7 @@ func runAdmin(ctx context.Context, args []string, stdout, stderr io.Writer, gete
 		return exitUsage
 	}
 	switch args[0] {
-	case "accounts", "tokens", "members", "namespaces", "feedback":
+	case "accounts", "tokens", "members", "namespaces", "feedback", "attachments":
 		return runAdminRemote(ctx, args, stdout, stderr, getenv)
 	case "status":
 		return runAdminStatus(ctx, args[1:], stdout, stderr, getenv)
@@ -255,6 +262,19 @@ func runAdminRemote(ctx context.Context, args []string, stdout, stderr io.Writer
 			}
 			return err
 		}),
+		"attachments list": noFlags("", 0, func(ctx context.Context, cl *client.Client, _ []string, out io.Writer) error {
+			rep, err := cl.AttachmentStorage(ctx)
+			if err == nil {
+				printAttachmentStorage(out, rep)
+			}
+			return err
+		}),
+		"attachments rm": noFlags("SHA256", 1, func(ctx context.Context, cl *client.Client, a []string, out io.Writer) error {
+			return deleteAttachments(ctx, cl, core.AttachmentDelete{SHA256: a[0]}, out)
+		}),
+		"attachments rm-conversation": noFlags("NAMESPACE CONVERSATION", 2, func(ctx context.Context, cl *client.Client, a []string, out io.Writer) error {
+			return deleteAttachments(ctx, cl, core.AttachmentDelete{Namespace: a[0], Conversation: a[1]}, out)
+		}),
 		"namespaces create": noFlags("NAME", 1, func(ctx context.Context, cl *client.Client, a []string, out io.Writer) error {
 			ns, err := cl.CreateNamespace(ctx, a[0])
 			if err == nil {
@@ -310,6 +330,35 @@ func runAdminRemote(ctx context.Context, args []string, stdout, stderr io.Writer
 		return exitError
 	}
 	return exitOK
+}
+
+func printAttachmentStorage(out io.Writer, rep core.AttachmentReport) {
+	fmt.Fprintf(out, "%s stored of a %s cap; each conversation may hold %s\n",
+		core.FormatSize(rep.Bytes), core.FormatSize(rep.Cap), core.FormatSize(rep.Quota))
+	if len(rep.Conversations) == 0 {
+		return
+	}
+	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "CONVERSATION\tSTATUS\tFILES\tSTORED\tGONE")
+	for _, u := range rep.Conversations {
+		fmt.Fprintf(tw, "%s/%s\t%s\t%d\t%s\t%d\n", u.Namespace, u.Conversation, u.Status, u.Blobs, core.FormatSize(u.Bytes), u.Gone)
+	}
+	_ = tw.Flush()
+}
+
+func deleteAttachments(ctx context.Context, cl *client.Client, d core.AttachmentDelete, out io.Writer) error {
+	blobs, size, err := cl.DeleteAttachments(ctx, d)
+	if err == nil {
+		fmt.Fprintf(out, "dropped %d stored %s (%s)\n", blobs, plural(blobs, "file", "files"), core.FormatSize(size))
+	}
+	return err
+}
+
+func plural(n int64, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
 }
 
 // parseSince reads an RFC 3339 time, or a duration counted back from now.
