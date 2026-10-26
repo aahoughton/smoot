@@ -30,6 +30,10 @@ func TestParseServeDefaults(t *testing.T) {
 
 		WriteLimit:       DefaultWriteLimit,
 		AuthFailureLimit: DefaultAuthFailureLimit,
+
+		AttachmentCap:    DefaultAttachmentCapMB << 20,
+		AttachmentQuota:  DefaultAttachmentQuotaMB << 20,
+		AttachmentExpiry: DefaultAttachmentExpiry,
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Fatalf("got %+v, want %+v", cfg, want)
@@ -88,6 +92,8 @@ func TestParseServeEnvOverridesDefault(t *testing.T) {
 		DB: "/env.db", Addr: ":9000", Web: true, Auth: AuthNone, MCPMaxWait: 2 * time.Minute,
 		LogLevel: slog.LevelDebug, LogFormat: "json",
 		WriteLimit: DefaultWriteLimit, AuthFailureLimit: DefaultAuthFailureLimit,
+		AttachmentCap: DefaultAttachmentCapMB << 20, AttachmentQuota: DefaultAttachmentQuotaMB << 20,
+		AttachmentExpiry: DefaultAttachmentExpiry,
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Fatalf("got %+v, want %+v", cfg, want)
@@ -135,6 +141,12 @@ func TestParseServeErrors(t *testing.T) {
 		{"bad write limit", []string{"--write-limit", "lots"}, nil, "invalid write-limit"},
 		{"negative failure limit", nil, map[string]string{EnvAuthFailureLimit: "-1"}, "invalid auth-failure-limit"},
 		{"bad proxy", []string{"--trusted-proxies", "10.0.0.0/8,proxy.lan"}, nil, "invalid trusted-proxies entry"},
+		{"bad attachments env", nil, map[string]string{EnvAttachments: "sure"}, "invalid SMOOT_ATTACHMENTS value"},
+		{"zero attachment cap", []string{"--attachment-cap-mb", "0"}, nil, "invalid attachment-cap-mb"},
+		{"bad attachment quota", nil, map[string]string{EnvAttachmentQuota: "lots"}, "invalid attachment-quota-mb"},
+		{"quota over cap", []string{"--attachment-cap-mb", "10", "--attachment-quota-mb", "20"}, nil, "larger than attachment-cap-mb"},
+		{"bad attachment expiry", []string{"--attachment-expiry", "30d"}, nil, "invalid attachment-expiry"},
+		{"attachment expiry too short", []string{"--attachment-expiry", "1s"}, nil, "invalid attachment-expiry"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -215,6 +227,36 @@ func TestParseServeFeedback(t *testing.T) {
 			cfg, err := ParseServe(tc.args, env(e), io.Discard)
 			if err != nil || cfg.Feedback != tc.want {
 				t.Fatalf("feedback = %v, %v; want %v", cfg.Feedback, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseServeAttachments(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		args       []string
+		env        map[string]string
+		on         bool
+		cap, quota int64
+		expiry     time.Duration
+	}{
+		{"defaults", nil, nil, false, DefaultAttachmentCapMB << 20, DefaultAttachmentQuotaMB << 20, DefaultAttachmentExpiry},
+		{"flags", []string{"--attachments", "--attachment-cap-mb", "50", "--attachment-quota-mb", "5", "--attachment-expiry", "2h"}, nil, true, 50 << 20, 5 << 20, 2 * time.Hour},
+		{"env", nil, map[string]string{EnvAttachments: "true", EnvAttachmentCap: "200", EnvAttachmentQuota: "20", EnvAttachmentExpiry: "1h"}, true, 200 << 20, 20 << 20, time.Hour},
+		{"flag beats env", []string{"--attachments=false", "--attachment-cap-mb", "300"}, map[string]string{EnvAttachments: "true", EnvAttachmentCap: "200"}, false, 300 << 20, DefaultAttachmentQuotaMB << 20, DefaultAttachmentExpiry},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := map[string]string{"HOME": "/h"}
+			for k, v := range tc.env {
+				e[k] = v
+			}
+			cfg, err := ParseServe(tc.args, env(e), io.Discard)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Attachments != tc.on || cfg.AttachmentCap != tc.cap || cfg.AttachmentQuota != tc.quota || cfg.AttachmentExpiry != tc.expiry {
+				t.Fatalf("got on=%v cap=%d quota=%d expiry=%v", cfg.Attachments, cfg.AttachmentCap, cfg.AttachmentQuota, cfg.AttachmentExpiry)
 			}
 		})
 	}
