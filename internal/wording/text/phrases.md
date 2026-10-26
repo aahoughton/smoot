@@ -67,6 +67,18 @@ more messages follow (last_seq is {{.LastSeq}}); call read again
 ## observer_yours_tag
 [observer, your account]
 
+## attachment_record
+fields: Name, Size, SHA
+{{.Name}} ({{.Size}}, sha256 {{.SHA}})
+
+## attachment_unavailable
+fields: Name, Size, Gone
+{{.Name}} ({{.Size}}; no longer downloadable: {{.Gone}})
+
+## attachment_fetch
+fields: Conversation, Seq, Agent, Namespace, URL
+get: smoot get {{.Conversation}} {{.Seq}} --agent {{.Agent}} --namespace {{.Namespace}}{{if .URL}} --url '{{.URL}}'{{end}}
+
 ## account_line
 fields: Name
 you post as account {{.Name}}

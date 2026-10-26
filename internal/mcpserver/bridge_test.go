@@ -59,7 +59,7 @@ func TestBridge(t *testing.T) {
 	t.Cleanup(func() { _ = cs.Close() })
 	s := &session{t: t, cs: cs}
 
-	if cs.InitializeResult().Instructions != wording.Default().Instructions("http://"+addr, "default") {
+	if cs.InitializeResult().Instructions != wording.Default().Instructions("http://"+addr, "default", false) {
 		t.Fatal("instructions were not mirrored")
 	}
 	var n int

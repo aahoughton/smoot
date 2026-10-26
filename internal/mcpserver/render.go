@@ -16,7 +16,7 @@ func renderStanding(st core.Standing) string {
 	return st.Line
 }
 
-func renderDigest(w *wording.Wording, d core.Digest) string {
+func renderDigest(w *wording.Wording, d core.Digest, fc fetchCmd) string {
 	var b strings.Builder
 	switch {
 	case d.New == 0 && d.TimedOut:
@@ -27,7 +27,7 @@ func renderDigest(w *wording.Wording, d core.Digest) string {
 		fmt.Fprintf(&b, "%d new (%s)", d.New, authorList(d.Authors))
 		if len(d.Messages) > 0 {
 			b.WriteString(":\n")
-			writeMessages(&b, w, d.Messages)
+			writeMessages(&b, w, fc, d.Messages)
 			break
 		}
 		if len(d.Previews) < d.New {
@@ -40,14 +40,14 @@ func renderDigest(w *wording.Wording, d core.Digest) string {
 	return b.String()
 }
 
-func renderSay(w *wording.Wording, r core.SayResult) string {
+func renderSay(w *wording.Wording, r core.SayResult, fc fetchCmd) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "posted #%d\n", r.Message.Seq)
 	if m := r.Missed; m != nil {
 		b.WriteString(w.Phrase(wording.SayMissed, map[string]any{"New": m.New, "Authors": authorList(m.Authors)}))
 		if len(m.Messages) > 0 {
 			b.WriteString(":\n")
-			writeMessages(&b, w, m.Messages)
+			writeMessages(&b, w, fc, m.Messages)
 		} else {
 			if len(m.Previews) < m.New {
 				fmt.Fprintf(&b, "; latest %d", len(m.Previews))
@@ -74,12 +74,12 @@ func writePreviews(b *strings.Builder, w *wording.Wording, ps []core.Preview) {
 	}
 }
 
-func renderRead(w *wording.Wording, r core.ReadResult) string {
+func renderRead(w *wording.Wording, r core.ReadResult, fc fetchCmd) string {
 	var b strings.Builder
 	if len(r.Messages) == 0 {
 		b.WriteString(w.Phrase(wording.ReadEmpty, nil) + "\n")
 	}
-	writeMessages(&b, w, r.Messages)
+	writeMessages(&b, w, fc, r.Messages)
 	if r.More {
 		b.WriteString(w.Phrase(wording.ReadMore, map[string]any{"LastSeq": r.LastSeq}) + "\n")
 	}
@@ -91,15 +91,32 @@ func renderRead(w *wording.Wording, r core.ReadResult) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// fetchCmd is what an attachment's download command needs besides its seq:
+// the conversation and agent of the call, and the server it reached.
+type fetchCmd struct {
+	Conversation, Agent, Namespace, URL string
+}
+
 // writeMessages writes one line per single-line message, and a header line
 // plus the body for multi-line ones. Every body line is indented, so only a
 // real message starts a line with "#": a body cannot pass off its lines as
 // other messages. Lines are split on every line terminator, not only "\n",
-// so a carriage return cannot start an unindented line either.
-func writeMessages(b *strings.Builder, w *wording.Wording, msgs []core.Message) {
+// so a carriage return cannot start an unindented line either. An
+// attachment whose bytes are stored gets an indented line with the command
+// that downloads it, as the reader.
+func writeMessages(b *strings.Builder, w *wording.Wording, fc fetchCmd, msgs []core.Message) {
 	for _, m := range msgs {
 		head := fmt.Sprintf("#%d %s%s%s:", m.Seq, m.Author, kindTag(w, m.Kind, m.YourAccount), replyTag(m.ReplyTo))
 		body := strings.TrimSpace(core.NormalizeLineBreaks(m.Body))
+		if m.Attachment != nil {
+			fmt.Fprintf(b, "%s %s\n", head, attachmentText(w, *m.Attachment))
+			if m.Attachment.Gone == "" && fc.Agent != "" {
+				b.WriteString("  " + w.Phrase(wording.AttachmentFetch, map[string]any{
+					"Conversation": fc.Conversation, "Seq": m.Seq, "Agent": fc.Agent, "Namespace": fc.Namespace, "URL": fc.URL,
+				}) + "\n")
+			}
+			continue
+		}
 		if !strings.Contains(body, "\n") {
 			fmt.Fprintf(b, "%s %s\n", head, body)
 			continue
@@ -196,6 +213,30 @@ func kindTag(w *wording.Wording, kind string, yours bool) string {
 		return " " + w.Phrase(wording.ObserverTag, nil)
 	default:
 		return " [" + kind + "]"
+	}
+}
+
+// attachmentText describes an attachment message's file on one line. Core
+// refuses file names with line breaks; as a second guard, any line break
+// becomes a space here, so no name can start a line of its own.
+func attachmentText(w *wording.Wording, a core.Attachment) string {
+	a.Name = strings.ReplaceAll(core.NormalizeLineBreaks(a.Name), "\n", " ")
+	data := map[string]any{"Name": a.Name, "Size": formatSize(a.Size), "SHA": a.SHA256[:min(len(a.SHA256), 12)], "Gone": a.Gone}
+	if a.Gone != "" {
+		return w.Phrase(wording.AttachmentUnavailable, data)
+	}
+	return w.Phrase(wording.AttachmentRecord, data)
+}
+
+// formatSize writes a byte count for people: 512 B, 1.5 KiB, 2.0 MiB.
+func formatSize(n int64) string {
+	switch {
+	case n < 1<<10:
+		return fmt.Sprintf("%d B", n)
+	case n < 1<<20:
+		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
+	default:
+		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
 	}
 }
 

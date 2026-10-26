@@ -146,6 +146,8 @@ type tools struct {
 	ns      string
 	maxWait time.Duration
 	w       *wording.Wording
+	// url is the server URL quoted in shell commands; may be empty.
+	url string
 }
 
 // NewServer returns an MCP server whose tools act as principal p in
@@ -163,11 +165,11 @@ func NewServer(svc *core.Service, p core.Principal, ns string, opts Options) *mc
 	}
 	w := opts.Wording
 	s := mcp.NewServer(&mcp.Implementation{Name: "smoot", Version: opts.Version}, &mcp.ServerOptions{
-		Instructions: w.Instructions(opts.URL, ns),
+		Instructions: w.Instructions(opts.URL, ns, svc.AttachmentsEnabled()),
 		Logger:       quiet(opts.Logger),
 		Capabilities: &mcp.ServerCapabilities{},
 	})
-	t := &tools{svc: svc, authn: opts.Authenticator, p: p, ns: ns, maxWait: opts.MaxWait, w: w}
+	t := &tools{svc: svc, authn: opts.Authenticator, p: p, ns: ns, maxWait: opts.MaxWait, w: w, url: opts.URL}
 	s.AddReceivingMiddleware(logCalls(opts.Logger, p, ns))
 	// Every tool acts only on this server (closed world). The log is
 	// append-only, so writes are not destructive, except close, which ends
@@ -199,6 +201,12 @@ func NewServer(svc *core.Service, p core.Principal, ns string, opts Options) *mc
 	}
 	reg.checkAllUsed()
 	return s
+}
+
+// fetchCmd is the context for attachment download commands in a result
+// for agent in conversation conv.
+func (t *tools) fetchCmd(conv, agent string) fetchCmd {
+	return fetchCmd{Conversation: conv, Agent: agent, Namespace: t.ns, URL: t.url}
 }
 
 // registry checks that the wording covers exactly the registered tools.
@@ -470,7 +478,7 @@ func (t *tools) read(ctx context.Context, req *mcp.CallToolRequest, in readIn) (
 	if r.Standing != nil {
 		noteStanding(ctx, *r.Standing)
 	}
-	return text(renderRead(t.w, r)), nil, nil
+	return text(renderRead(t.w, r, t.fetchCmd(in.Conversation, in.Agent))), nil, nil
 }
 
 type sayIn struct {
@@ -499,7 +507,7 @@ func (t *tools) say(ctx context.Context, req *mcp.CallToolRequest, in sayIn) (*m
 		note(ctx, slog.Int("missed", r.Missed.New))
 	}
 	noteStanding(ctx, r.Standing)
-	return text(renderSay(t.w, r)), nil, nil
+	return text(renderSay(t.w, r, t.fetchCmd(in.Conversation, in.Agent))), nil, nil
 }
 
 type waitIn struct {
@@ -527,7 +535,7 @@ func (t *tools) wait(ctx context.Context, req *mcp.CallToolRequest, in waitIn) (
 	}
 	note(ctx, slog.Duration("timeout", timeout), slog.Int("new", d.New), slog.Bool("timed_out", d.TimedOut))
 	noteStanding(ctx, d.Standing)
-	return text(renderDigest(t.w, d)), nil, nil
+	return text(renderDigest(t.w, d, t.fetchCmd(in.Conversation, in.Agent))), nil, nil
 }
 
 type statusIn struct {

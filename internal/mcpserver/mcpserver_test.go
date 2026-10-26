@@ -99,7 +99,7 @@ func lastLine(s string) string {
 
 func TestToolsAndInstructions(t *testing.T) {
 	s := connect(t, newService(t), mcpserver.Options{})
-	if got := s.cs.InitializeResult().Instructions; got != wording.Default().Instructions("", "default") {
+	if got := s.cs.InitializeResult().Instructions; got != wording.Default().Instructions("", "default", false) {
 		t.Fatalf("instructions = %q", got)
 	}
 	var names []string

@@ -16,10 +16,17 @@ func TestEmbeddedWordingLoads(t *testing.T) {
 			t.Errorf("%s is empty", k)
 		}
 	}
-	if got := w.Instructions("http://h:1", "team"); !strings.Contains(got, "--namespace team --url 'http://h:1'") {
+	if got := w.Instructions("http://h:1", "team", false); !strings.Contains(got, "--namespace team --url 'http://h:1'") {
 		t.Fatalf("instructions recipe: %s", got)
 	}
-	if got := w.Instructions("", "team"); strings.Contains(got, "--url") {
+	on := w.Instructions("http://h:1", "team", true)
+	if !strings.Contains(on, "smoot attach <conversation> <file> --agent <name> --namespace team --url 'http://h:1'") {
+		t.Fatalf("attachments on: %s", on)
+	}
+	if got := w.Instructions("http://h:1", "team", false); strings.Contains(got, "attach") {
+		t.Fatalf("attachments off: %s", got)
+	}
+	if got := w.Instructions("", "team", false); strings.Contains(got, "--url") {
 		t.Fatalf("instructions with no URL mention --url: %s", got)
 	}
 }

@@ -28,7 +28,9 @@ func TestAgentText(t *testing.T) {
 	w := wording.Default()
 
 	b.WriteString("# Instructions (url http://127.0.0.1:8787, namespace default)\n\n")
-	b.WriteString(w.Instructions("http://127.0.0.1:8787", "default"))
+	b.WriteString(w.Instructions("http://127.0.0.1:8787", "default", false))
+	b.WriteString("\n\n# Instructions with --attachments\n\n")
+	b.WriteString(w.Instructions("http://127.0.0.1:8787", "default", true))
 	b.WriteString("\n\n# Tools (with --feedback)\n")
 
 	// A fixed clock keeps the times and cursors in search results stable.
@@ -93,6 +95,7 @@ func TestAgentText(t *testing.T) {
 		"Conversation": "cache", "Status": "open", "You": "active", "Expected": true,
 		"Unread": 2, "Replies": 1, "Next": "read", "Advice": "read the new messages, then reply or wait",
 		"New": 2, "Authors": "bob x2", "Cursor": "1791855824890.3", "Total": 37, "Shown": 10, "Lines": "cache: open; you: active, expected; unread: 2; next: read (read the new messages, then reply or wait)",
+		"Size": "1.5 KiB", "SHA": "2465bebf63ca", "Gone": "expired", "Seq": 4, "Agent": "bob", "Namespace": "default", "URL": "http://127.0.0.1:8787",
 	}
 	for _, k := range wording.PhraseKeys {
 		fmt.Fprintf(&b, "\n## %s\n%s\n", k, w.Phrase(k, sample))
@@ -159,6 +162,29 @@ func TestAgentText(t *testing.T) {
 	step("bob", bob, "feedback", with("agent", "bob", "body", "Replacing: the wait timeout surprised me once."))
 	step("bob", bob, "read", with("agent", "bob"))
 	step("bob", bob, "feedback", with("agent", "zed", "body", "never joined"))
+
+	// Attachments arrive over the API; agents see their records.
+	b.WriteString("\n# Sample session with --attachments\n")
+	files := newServiceWith(t, core.Options{Attachments: true, Now: func() time.Time { return clock }})
+	alice, bob = connect(t, files, mcpserver.Options{}), connect(t, files, mcpserver.Options{})
+	conv = map[string]any{"conversation": "bench"}
+	step("alice", alice, "start", with("agent", "alice", "end", "agreement"))
+	step("bob", bob, "join", with("agent", "bob"))
+	res, err := files.Attach(t.Context(), core.Anonymous(), "default", "bench", core.AttachParams{
+		Agent: "alice", Name: "results.csv", Data: []byte(strings.Repeat("lru,91\n", 220)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	step("alice", alice, "say", with("agent", "alice", "body", "Results are in results.csv; LRU wins."))
+	step("bob", bob, "wait", with("agent", "bob", "timeout_seconds", 5))
+	if _, err := files.Fetch(t.Context(), core.Anonymous(), "default", "bench", core.FetchParams{Agent: "bob", Seq: res.Message.Seq}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := files.DeleteAttachments(t.Context(), core.Anonymous(), core.AttachmentDelete{Namespace: "default", Conversation: "bench"}); err != nil {
+		t.Fatal(err)
+	}
+	step("alice", alice, "read", with("agent", "alice", "after", 0))
 
 	got := b.String()
 	path := filepath.Join("testdata", "agent-text.golden")
