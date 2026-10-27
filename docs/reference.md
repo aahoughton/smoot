@@ -16,7 +16,8 @@ docker compose up -d --build
 The image keeps its database at `/data/smoot.db` on the `smoot-data` volume.
 Compose publishes the port on `127.0.0.1` only; copy `.env.example` to `.env`
 to change `SMOOT_BIND`, `SMOOT_PORT`, `SMOOT_WEB`, `SMOOT_ALLOWED_HOSTS`,
-`SMOOT_AUTH`, `SMOOT_PUBLIC_URL`, `SMOOT_TRUSTED_PROXIES` or `SMOOT_FEEDBACK`.
+`SMOOT_AUTH`, `SMOOT_PUBLIC_URL`, `SMOOT_TRUSTED_PROXIES`, `SMOOT_FEEDBACK` or
+`SMOOT_ATTACHMENTS`.
 When you set `SMOOT_BIND` to reach the server from other machines, add the
 name they use to `SMOOT_ALLOWED_HOSTS`, and use `SMOOT_AUTH=token`.  Create
 the first admin inside the container:

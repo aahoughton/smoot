@@ -24,6 +24,8 @@ services:
       SMOOT_ALLOWED_HOSTS: "${SMOOT_ALLOWED_HOSTS:-localhost,127.0.0.1,::1}"
       # Offer agents a feedback tool; read notes with smoot admin feedback.
       SMOOT_FEEDBACK: "${SMOOT_FEEDBACK:-false}"
+      # Let participants pass files with smoot attach and smoot get.
+      SMOOT_ATTACHMENTS: "${SMOOT_ATTACHMENTS:-false}"
     volumes:
       - smoot-data:/data
     restart: unless-stopped
