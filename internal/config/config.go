@@ -33,6 +33,11 @@ const (
 	EnvPublicURL = "SMOOT_PUBLIC_URL"
 	EnvFeedback  = "SMOOT_FEEDBACK"
 
+	EnvAttachments      = "SMOOT_ATTACHMENTS"
+	EnvAttachmentCap    = "SMOOT_ATTACHMENT_CAP_MB"
+	EnvAttachmentQuota  = "SMOOT_ATTACHMENT_QUOTA_MB"
+	EnvAttachmentExpiry = "SMOOT_ATTACHMENT_EXPIRY"
+
 	EnvWriteLimit       = "SMOOT_WRITE_LIMIT"
 	EnvAuthFailureLimit = "SMOOT_AUTH_FAILURE_LIMIT"
 	EnvTrustedProxies   = "SMOOT_TRUSTED_PROXIES"
@@ -49,6 +54,13 @@ const DefaultMCPMaxWait = 50 * time.Second
 const (
 	DefaultWriteLimit       = 300
 	DefaultAuthFailureLimit = 10
+)
+
+// Attachment storage defaults.
+const (
+	DefaultAttachmentCapMB   = 1024
+	DefaultAttachmentQuotaMB = 100
+	DefaultAttachmentExpiry  = 30 * 24 * time.Hour
 )
 
 // DefaultAddr listens on loopback only. Exposing the server to a network is a
@@ -111,6 +123,16 @@ type Serve struct {
 	// Feedback offers agents the MCP feedback tool, for notes on smoot
 	// itself that only server admins read.
 	Feedback bool
+	// Attachments lets participants upload files to a conversation and
+	// download them.
+	Attachments bool
+	// AttachmentCap bounds the bytes of all stored attachments.
+	AttachmentCap int64
+	// AttachmentQuota bounds the bytes stored for one conversation.
+	AttachmentQuota int64
+	// AttachmentExpiry is how long after a conversation concludes its
+	// attachments' bytes are kept.
+	AttachmentExpiry time.Duration
 	// LogLevel is the least severe level logged. At info the server logs
 	// each MCP tool call; at debug, each HTTP request too.
 	LogLevel slog.Level
@@ -148,6 +170,10 @@ HTML viewer. Each flag also reads the environment variable it names.
 	fs.StringVar(&cfg.Addr, "addr", "", "listen address (env "+EnvAddr+", default "+DefaultAddr+")")
 	web := fs.Bool("web", false, "serve the HTML viewer (env "+EnvWeb+"=true)")
 	feedback := fs.Bool("feedback", false, "offer agents a feedback tool for notes on smoot itself, read with smoot admin feedback (env "+EnvFeedback+"=true)")
+	attachments := fs.Bool("attachments", false, "let participants upload files to a conversation and download them, with smoot attach and smoot get (env "+EnvAttachments+"=true)")
+	attachCap := fs.String("attachment-cap-mb", "", "megabytes of attachments the server stores in all; full, it frees space from concluded conversations, oldest upload first (env "+EnvAttachmentCap+", default "+strconv.Itoa(DefaultAttachmentCapMB)+")")
+	attachQuota := fs.String("attachment-quota-mb", "", "megabytes of attachments one conversation may hold (env "+EnvAttachmentQuota+", default "+strconv.Itoa(DefaultAttachmentQuotaMB)+")")
+	attachExpiry := fs.String("attachment-expiry", "", "how long after a conversation concludes its attachments are kept, e.g. 720h (env "+EnvAttachmentExpiry+", default "+DefaultAttachmentExpiry.String()+")")
 	auth := fs.String("auth", "", "auth mode: none or token (env "+EnvAuth+", default none)")
 	fs.StringVar(&cfg.ThemeDir, "theme-dir", "", "directory of theme files overriding the default HTML theme (env "+EnvThemeDir+")")
 	allowed := fs.String("allowed-hosts", "", "comma-separated Host names to answer, or * for any (env "+EnvAllowedHosts+", default: loopback names on a loopback address, else any; required beyond loopback with auth off)")
@@ -186,6 +212,7 @@ HTML viewer. Each flag also reads the environment variable it names.
 	}{
 		{"web", EnvWeb, *web, &cfg.Web},
 		{"feedback", EnvFeedback, *feedback, &cfg.Feedback},
+		{"attachments", EnvAttachments, *attachments, &cfg.Attachments},
 	} {
 		*b.dst = b.val
 		if !flagSet(fs, b.flag) {
@@ -211,6 +238,31 @@ HTML viewer. Each flag also reads the environment variable it names.
 		return Serve{}, fmt.Errorf("serve: invalid mcp-max-wait %q: want a duration between 1s and 10m", waitStr)
 	}
 	cfg.MCPMaxWait = d
+
+	for _, l := range []struct {
+		name, flag, env string
+		def             int
+		dst             *int64
+	}{
+		{"attachment-cap-mb", *attachCap, EnvAttachmentCap, DefaultAttachmentCapMB, &cfg.AttachmentCap},
+		{"attachment-quota-mb", *attachQuota, EnvAttachmentQuota, DefaultAttachmentQuotaMB, &cfg.AttachmentQuota},
+	} {
+		v := firstNonEmpty(l.flag, getenv(l.env), strconv.Itoa(l.def))
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || n < 1 || n > 1<<20 {
+			return Serve{}, fmt.Errorf("serve: invalid %s %q: want a number of megabytes from 1 to 1048576", l.name, v)
+		}
+		*l.dst = n << 20
+	}
+	if cfg.AttachmentQuota > cfg.AttachmentCap {
+		return Serve{}, fmt.Errorf("serve: attachment-quota-mb %d is larger than attachment-cap-mb %d", cfg.AttachmentQuota>>20, cfg.AttachmentCap>>20)
+	}
+	expStr := firstNonEmpty(*attachExpiry, getenv(EnvAttachmentExpiry), DefaultAttachmentExpiry.String())
+	exp, err := time.ParseDuration(expStr)
+	if err != nil || exp < time.Minute {
+		return Serve{}, fmt.Errorf("serve: invalid attachment-expiry %q: want a duration of at least 1m, e.g. 720h", expStr)
+	}
+	cfg.AttachmentExpiry = exp
 
 	cfg.PublicURL = firstNonEmpty(*publicURL, getenv(EnvPublicURL))
 	if cfg.PublicURL != "" {

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>files · smoot</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="bar">
+  <nav class="crumbs">
+    <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>smoot</a><span class="sep">/</span><a href="/n/default">default</a>
+  </nav>
+<div class="bar-conversation">
+  <h1>files</h1>
+  <span id="status" class="pill open">open</span>
+</div>
+</header>
+<main class="with-aside">
+<section class="thread">
+  <ol id="messages" class="messages" style="--seq-width: 2ch" data-last-seq="5" data-events="/n/default/c/files/events">
+  <li class="message system tone-7" id="m1" data-seq="1">
+  <a class="seq" href="#m1">#1</a>
+  <div class="system-line">alice started the conversation (end: none) <time datetime="2030-01-02T15:04:05Z" title="2030-01-02T15:04:05Z">15:04</time></div>
+</li>
+  <li class="message system tone-7" id="m2" data-seq="2">
+  <a class="seq" href="#m2">#2</a>
+  <div class="system-line">alice joined <time datetime="2030-01-02T15:04:05Z" title="2030-01-02T15:04:05Z">15:04</time></div>
+</li>
+  <li class="message attachment tone-7" id="m3" data-seq="3">
+  <a class="seq" href="#m3">#3</a>
+  <div class="card">
+    <div class="head">
+      <span class="avatar" aria-hidden="true">A</span>
+      <span class="author">alice</span> <span class="tag">file</span>
+      <time datetime="2030-01-02T15:04:05Z" title="2030-01-02T15:04:05Z">15:04</time>
+    </div>
+    <div class="body file"><span class="file-name">old notes.txt</span>
+      <span class="file-size">6 B</span>
+      <code class="file-sha" title="sha256 bd949e87e66b03461a15a805e4a9bb25749113df57b391987d307855aa632c80">bd949e87e66b</code> <span class="file-gone">no longer downloadable: deleted</span>
+    </div>
+  </div>
+</li>
+  <li class="message attachment tone-7 continues" id="m4" data-seq="4">
+  <a class="seq" href="#m4">#4</a>
+  <div class="card">
+    <div class="head">
+      <time class="gap" datetime="2030-01-02T15:04:05Z" title="alice, 15:04 (2030-01-02T15:04:05Z)">+0s</time> <span class="tag">file</span>
+    </div>
+    <div class="body file"><a class="file-name" href="/n/default/c/files/files/4" download>results &lt;b&gt;.csv</a>
+      <span class="file-size">2.1 KiB</span>
+      <code class="file-sha" title="sha256 695acaa3b9800c0759f8038c3fa9813115735c984b1991692d1d0e1a71fb0c69">695acaa3b980</code>
+    </div>
+  </div>
+</li>
+  <li class="message say tone-7" id="m5" data-seq="5">
+  <a class="seq" href="#m5">#5</a>
+  <div class="card">
+    <div class="head">
+      <span class="avatar" aria-hidden="true">A</span>
+      <span class="author">alice</span>
+      <time datetime="2030-01-02T15:04:05Z" title="2030-01-02T15:04:05Z">15:04</time>
+    </div>
+    <div class="body"><p>Results attached.</p>
+</div>
+  </div>
+</li>
+  </ol>
+  <div class="dock">
+    <button type="button" class="new-below" hidden><span class="new-count">0</span> new below</button>
+    <form class="observe" method="post" action="/n/default/c/files/observe">
+      <label class="as">as <input name="name" value="" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}" maxlength="64" placeholder="name" aria-label="Your name"></label>
+      <textarea name="body" rows="1" required placeholder="Add comments to steer the conversation" aria-label="Comment"></textarea>
+      <button type="submit" title="Send (Enter; Shift+Enter for a new line)">Send</button>
+      <p class="observe-error" role="alert" hidden></p>
+    </form>
+    <p class="observe-closed" hidden>This conversation has concluded; comments are closed.</p>
+  </div>
+</section>
+
+<aside class="details">
+  <button type="button" class="details-toggle" aria-expanded="true" hidden><span class="when-open">Hide participants and details</span><span class="when-collapsed">Show participants and details</span></button>
+  <section id="about" class="panel about"><h2>About</h2>
+<dl>
+  <dt>Ends</dt>
+  <dd>open-ended</dd>
+  <dt>Started</dt>
+  <dd>by <span class="name tone-7">alice</span>, <time datetime="2030-01-02T15:04:05Z" title="2030-01-02T15:04:05Z">Jan 2 15:04</time></dd>
+  <dt>Messages</dt>
+  <dd>5, last <time datetime="2030-01-02T15:04:05Z" title="2030-01-02T15:04:05Z">10m ago</time></dd>
+</dl></section>
+  <section id="participants" class="panel"><h2>Participants <span class="count">1</span></h2>
+<ul class="people">
+  <li class="person tone-7 active">
+    <span class="avatar" aria-hidden="true">A</span>
+    <div class="who">
+      <span class="name-line"><span class="name">alice</span></span>
+      <span class="state"><span class="dot working" aria-hidden="true"></span>active, working
+      </span>
+    </div>
+  </li>
+</ul></section>
+</aside>
+</main>
+<footer class="foot">smoot test</footer>
+<script src="/static/smoot.js" defer></script>
+</body>
+</html>

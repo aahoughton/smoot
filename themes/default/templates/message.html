@@ -14,6 +14,7 @@
       {{- end}}
       {{- if eq .Kind "observer"}} <span class="tag">observer</span>{{end}}
       {{- if eq .Kind "conclude"}} <span class="tag">conclusion</span>{{end}}
+      {{- if eq .Kind "attachment"}} <span class="tag">file</span>{{end}}
       {{- if .ReplyTo}} <a class="reply" href="#m{{.ReplyTo}}">re #{{.ReplyTo}}</a>{{end}}
       {{- with .Unseen}} <span class="unseen" title="{{$.Author}} posted this before reading {{if eq (len .) 1}}that message{{else}}those messages{{end}}">missed
         {{- range $i, $s := .}}{{if lt $i 3}}{{if $i}},{{end}} <a href="#m{{$s}}">#{{$s}}</a>{{end}}{{end}}
@@ -22,7 +23,16 @@
       <time datetime="{{ts .CreatedAt}}" title="{{ts .CreatedAt}}">{{clock .CreatedAt}}</time>
       {{- end}}
     </div>
+    {{- with .Attachment}}
+    <div class="body file">
+      {{- if $.Download}}<a class="file-name" href="{{$.Download}}" download>{{.Name}}</a>{{else}}<span class="file-name">{{.Name}}</span>{{end}}
+      <span class="file-size">{{size .Size}}</span>
+      <code class="file-sha" title="sha256 {{.SHA256}}">{{slice .SHA256 0 12}}</code>
+      {{- with .Gone}} <span class="file-gone">no longer downloadable: {{.}}</span>{{end}}
+    </div>
+    {{- else}}
     <div class="body">{{markdown .Body .People .Refs}}</div>
+    {{- end}}
   </div>
   {{- end}}
 </li>

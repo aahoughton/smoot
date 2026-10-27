@@ -204,6 +204,9 @@ form.search button { font: inherit; font-weight: 600; font-size: 0.9rem; padding
 .mention.observer { --tone: var(--observer); }
 .message.conclude .card { background: var(--conclude-bg); }
 .message.conclude .tag { color: var(--open); }
+.card .file { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem; }
+.card .file-name { font-weight: 600; overflow-wrap: anywhere; }
+.card .file-size, .card .file-sha, .card .file-gone { color: var(--muted); font-size: 0.82rem; }
 .message:target .card { box-shadow: 0 0 0 2px var(--accent); }
 /* A run: messages in a row from one participant share one block. Each
    keeps its seq and its own slim header, which shows the gap since the

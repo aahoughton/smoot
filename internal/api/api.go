@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 
@@ -149,7 +150,12 @@ func Register(mux *http.ServeMux, svc *core.Service, authn auth.Authenticator, o
 	if h.now == nil {
 		h.now = time.Now
 	}
-	for _, rt := range routes {
+	all := routes
+	// Tests of other routes may pass no service.
+	if svc != nil && svc.AttachmentsEnabled() {
+		all = append(slices.Clip(routes), attachmentRoutes...)
+	}
+	for _, rt := range all {
 		mux.HandleFunc(rt.method+" "+rt.pattern, func(w http.ResponseWriter, r *http.Request) {
 			p, err := h.authn.Authenticate(r)
 			if err == nil {
@@ -189,13 +195,18 @@ func StatusFor(code core.Code) int {
 		return http.StatusUnauthorized
 	case core.CodeForbidden, core.CodeNotCoordinator:
 		return http.StatusForbidden
-	case core.CodeNamespaceNotFound, core.CodeConversationNotFound, core.CodeAccountNotFound, core.CodeTokenNotFound, core.CodeFeedbackNotFound, "not_found":
+	case core.CodeNamespaceNotFound, core.CodeConversationNotFound, core.CodeAccountNotFound, core.CodeTokenNotFound, core.CodeFeedbackNotFound,
+		core.CodeAttachmentNotFound, "not_found":
 		return http.StatusNotFound
+	case core.CodeAttachmentGone:
+		return http.StatusGone
+	case core.CodeAttachmentQuota, core.CodeAttachmentCap:
+		return http.StatusInsufficientStorage
 	case core.CodeNamespaceExists, core.CodeConversationExists, core.CodeConversationConcluded,
 		core.CodeNotParticipant, core.CodeNameActive, core.CodeStaleContext, core.CodeAccountExists, core.CodeLastAdmin, core.CodeOwnCredential,
 		core.CodeIdempotencyConflict:
 		return http.StatusConflict
-	case core.CodeMessageTooLarge:
+	case core.CodeMessageTooLarge, core.CodeAttachmentTooLarge:
 		return http.StatusRequestEntityTooLarge
 	case core.CodeTooManyWaiters, core.CodeTooManyWatchers, core.CodeRateLimited:
 		return http.StatusTooManyRequests

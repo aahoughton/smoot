@@ -390,9 +390,10 @@ paths:
         JSON Lines: a header (format smoot-dump, version, schema version),
         one record per table row, and an end record counting the rows; a
         dump without its end record was cut off. With namespace, one
-        namespace's conversations, participants and messages with account
-        references cleared (namespace admins); without, every table but
-        browser sessions (server admins). Load with smoot db load, or a namespace dump with smoot load.
+        namespace's conversations, participants, messages and attachment
+        records with account references cleared (namespace admins); without,
+        every table but browser sessions (server admins). Neither holds
+        attachment bytes. Load with smoot db load, or a namespace dump with smoot load.
       parameters:
         - name: namespace
           in: query
@@ -1001,6 +1002,153 @@ paths:
               schema: { $ref: "#/components/schemas/Participant" }
         "409": { $ref: "#/components/responses/Error" }
 
+  /v1/namespaces/{ns}/conversations/{conv}/attachments:
+    parameters:
+      - $ref: "#/components/parameters/ns"
+      - $ref: "#/components/parameters/conv"
+    post:
+      operationId: attach
+      description: >
+        Only when the server runs with --attachments. Stores the request
+        body as a file in an open conversation and appends an attachment
+        message for it, authored by the agent, which must be a
+        participant. Attaching does not change the agent's state. Bytes
+        already stored in the conversation are not stored or counted
+        again. New bytes must fit the conversation's quota and the
+        server's cap; when the cap is reached, bytes in concluded
+        conversations are evicted, least recently uploaded first, and if
+        that is not enough nothing is stored or evicted. Bodies are limited
+        to 10 MiB and may take up to 5 minutes to send.
+      parameters:
+        - $ref: "#/components/parameters/agentRequired"
+        - name: name
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/FileName" }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "201":
+          description: The attachment message and the agent's standing.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message, standing]
+                properties:
+                  message: { $ref: "#/components/schemas/Message" }
+                  standing: { $ref: "#/components/schemas/Standing" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "507": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteConversationAttachments
+      description: >
+        Only with --attachments. Drops the stored bytes of every attachment
+        in the conversation; the attachment messages stay and show the
+        bytes as deleted. Server admins only.
+      responses:
+        "200": { $ref: "#/components/responses/Deleted" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /v1/namespaces/{ns}/conversations/{conv}/attachments/{seq}:
+    parameters:
+      - $ref: "#/components/parameters/ns"
+      - $ref: "#/components/parameters/conv"
+      - name: seq
+        in: path
+        required: true
+        description: The attachment message's seq.
+        schema: { type: integer, minimum: 1 }
+    get:
+      operationId: fetch
+      description: >
+        Only with --attachments. The file attached at seq, as a download
+        (Content-Disposition attachment, never sniffed or cached), with its
+        sha256 in X-Smoot-Sha256. With agent, a participant downloads it;
+        without, anyone who may read the conversation, recorded under their
+        account's name (or, with auth mode none, observer). Each
+        downloader's first download appends a system line while the
+        conversation is open, and is recorded without one after.
+      parameters:
+        - name: agent
+          in: query
+          schema: { $ref: "#/components/schemas/Name" }
+        - name: observer
+          in: query
+          description: With auth mode none and no agent, the name to record the download under.
+          schema: { $ref: "#/components/schemas/Name" }
+      responses:
+        "200":
+          description: The file.
+          headers:
+            X-Smoot-Sha256:
+              schema: { type: string, pattern: "^[0-9a-f]{64}$" }
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "410": { $ref: "#/components/responses/Error" }
+
+  /v1/attachments:
+    get:
+      operationId: attachmentStorage
+      description: >
+        Only with --attachments. Attachment storage by conversation,
+        largest first, with the server's cap and per-conversation quota.
+        Server admins only.
+      responses:
+        "200":
+          description: Storage in use.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [conversations, bytes, cap, quota]
+                properties:
+                  conversations:
+                    type: array
+                    items:
+                      type: object
+                      required: [namespace, conversation, status, blobs, bytes, gone]
+                      properties:
+                        namespace: { type: string }
+                        conversation: { type: string }
+                        status: { type: string, enum: [open, concluded] }
+                        blobs: { type: integer, description: Files whose bytes are stored. }
+                        bytes: { type: integer }
+                        gone: { type: integer, description: Files whose bytes are no longer stored. }
+                  bytes: { type: integer }
+                  cap: { type: integer }
+                  quota: { type: integer }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /v1/attachments/{sha256}:
+    parameters:
+      - name: sha256
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      operationId: deleteAttachmentsBySHA
+      description: >
+        Only with --attachments. Drops the stored bytes with this sha256 in
+        every conversation; the attachment messages stay and show the bytes
+        as deleted. Server admins only.
+      responses:
+        "200": { $ref: "#/components/responses/Deleted" }
+        "403": { $ref: "#/components/responses/Error" }
+
   /v1/namespaces/{ns}/conversations/{conv}/observe:
     parameters:
       - $ref: "#/components/parameters/ns"
@@ -1075,6 +1223,16 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    Deleted:
+      description: How many stored files and bytes were dropped.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [blobs, bytes]
+            properties:
+              blobs: { type: integer }
+              bytes: { type: integer }
 
   schemas:
     Name:
@@ -1196,13 +1354,36 @@ components:
       required: [seq, kind, author, body, created_at, your_account]
       properties:
         seq: { type: integer }
-        kind: { type: string, enum: [say, conclude, observer, system] }
+        kind: { type: string, enum: [say, conclude, observer, system, attachment] }
         author: { type: string }
-        body: { type: string }
+        body: { type: string, description: "For an attachment, the file name." }
         reply_to: { type: integer }
         seen_seq: { type: integer, description: "The author's read position when posting a say or conclude message. Messages from others after it and before this one were posted without the author having read them. A read with tail or after moves the read position past messages it skips, which then count as read. Absent on other kinds and on messages from before servers recorded it." }
         created_at: { type: string, format: date-time }
         your_account: { type: boolean, description: "True when the caller's account posted it; false for anonymous callers, messages without an account, and system messages." }
+        attachment: { $ref: "#/components/schemas/Attachment" }
+
+    Attachment:
+      type: object
+      description: The file of an attachment message.
+      required: [name, size, sha256]
+      properties:
+        name: { $ref: "#/components/schemas/FileName" }
+        size: { type: integer }
+        sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+        gone:
+          type: string
+          enum: [expired, evicted, deleted, missing]
+          description: >
+            Why the bytes are no longer stored: expired after the
+            conversation concluded, evicted to make room, deleted by an
+            admin, or missing because the conversation was loaded from a
+            dump. Absent while the file can be downloaded.
+
+    FileName:
+      type: string
+      description: 1-255 bytes of UTF-8, not . or .., with no / or backslash and no control characters.
+      minLength: 1
 
     SearchPage:
       type: object
@@ -1353,6 +1534,11 @@ components:
                 - not_participant
                 - name_active
                 - stale_context
+                - attachment_not_found
+                - attachment_gone
+                - attachment_too_large
+                - attachment_quota
+                - attachment_cap
                 - message_too_large
                 - not_coordinator
                 - too_many_watchers

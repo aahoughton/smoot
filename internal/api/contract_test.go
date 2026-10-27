@@ -38,7 +38,7 @@ func TestResponsesMatchTheContract(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	clock := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
-	svc := core.New(db, core.Options{Policy: core.RolePolicy(), Now: func() time.Time { return clock }, Feedback: true})
+	svc := core.New(db, core.Options{Policy: core.RolePolicy(), Now: func() time.Time { return clock }, Feedback: true, Attachments: true})
 	root, err := svc.Bootstrap(t.Context(), "root")
 	if err != nil {
 		t.Fatal(err)
@@ -103,6 +103,31 @@ func TestResponsesMatchTheContract(t *testing.T) {
 		return v
 	}
 
+	// download records a file response: its status, the headers that make
+	// it a download, and the body.
+	download := func(path string) {
+		t.Helper()
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		out.WriteString("\n## GET " + path + " -> " + http.StatusText(resp.StatusCode) + "\n")
+		for _, h := range []string{"Content-Type", "Content-Disposition", "Content-Length", "X-Content-Type-Options", "Cache-Control", "Content-Security-Policy", "X-Smoot-Sha256"} {
+			fmt.Fprintf(&out, "%s: %s\n", h, resp.Header.Get(h))
+		}
+		fmt.Fprintf(&out, "%q\n", raw)
+	}
+
 	const c = "/v1/namespaces/default/conversations/design"
 	call("GET", "/v1/whoami", nil)
 	call("POST", "/v1/namespaces", map[string]any{"name": "team"})
@@ -133,6 +158,14 @@ func TestResponsesMatchTheContract(t *testing.T) {
 	call("GET", "/v1/namespaces/default/search?q=lru&order=oldest&limit=1", nil)
 	call("GET", "/v1/namespaces/default/search?q=budget&author=root", nil)
 	call("GET", "/v1/namespaces/default/search?q=%22%22", nil)
+	attached := call("POST", c+"/attachments?agent=bob&name=bench+r%C3%A9sults.csv", []byte("policy,hits\nlru,91\n"))
+	attachSeq := int(attached["message"].(map[string]any)["seq"].(float64))
+	download(fmt.Sprintf("%s/attachments/%d?agent=bob", c, attachSeq))
+	token = root.Secret
+	download(fmt.Sprintf("%s/attachments/%d", c, attachSeq))
+	call("GET", fmt.Sprintf("%s/attachments/%d?agent=alice", c, attachSeq-1), nil)
+	call("GET", "/v1/attachments", nil)
+	token = issued["secret"].(string)
 	call("POST", c+"/conclude", map[string]any{"agent": "bob", "body": "AGREED: abc1234"})
 	call("POST", c+"/leave", map[string]any{"agent": "bob"})
 	token = root.Secret
@@ -166,6 +199,9 @@ func TestResponsesMatchTheContract(t *testing.T) {
 	call("POST", "/v1/accounts/pat/tokens/revoke", map[string]any{"force": false})
 	call("POST", "/v1/accounts/root/tokens/1/revoke", map[string]any{})
 	call("DELETE", "/v1/namespaces/default/members/pat", nil)
+	call("DELETE", "/v1/attachments/"+attached["message"].(map[string]any)["attachment"].(map[string]any)["sha256"].(string), nil)
+	call("DELETE", "/v1/namespaces/copy/conversations/design/attachments", nil)
+	call("GET", fmt.Sprintf("%s/attachments/%d?agent=alice", c, attachSeq), nil)
 	call("POST", c+"/messages", map[string]any{"agent": "alice", "body": "late"})
 
 	path := filepath.Join("testdata", "contract.golden")

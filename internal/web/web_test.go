@@ -44,13 +44,19 @@ func (e *env) advance(d time.Duration) { e.offset.Add(int64(d)) }
 
 func newEnv(t *testing.T, opts web.Options) *env {
 	t.Helper()
+	return newEnvWith(t, opts, core.Options{})
+}
+
+func newEnvWith(t *testing.T, opts web.Options, copts core.Options) *env {
+	t.Helper()
 	db, err := store.Open(t.Context(), filepath.Join(t.TempDir(), "smoot.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	offset := new(atomic.Int64)
-	svc := core.New(db, core.Options{Now: func() time.Time { return fixed.Add(time.Duration(offset.Load())) }})
+	copts.Now = func() time.Time { return fixed.Add(time.Duration(offset.Load())) }
+	svc := core.New(db, copts)
 	if opts.Now == nil {
 		opts.Now = func() time.Time { return fixed.Add(10 * time.Minute) }
 		opts.Location = time.UTC
@@ -332,6 +338,8 @@ func TestGoldenPages(t *testing.T) {
 	e.seed()
 	runs := newEnv(t, web.Options{})
 	runs.seedRuns()
+	files := newEnvWith(t, web.Options{}, core.Options{Attachments: true})
+	files.seedFiles()
 	if _, err := e.svc.CreateNamespace(t.Context(), core.Anonymous(), "team-blue"); err != nil {
 		t.Fatal(err)
 	}
@@ -339,12 +347,13 @@ func TestGoldenPages(t *testing.T) {
 		e    *env
 		path string
 	}{
-		"namespaces":        {e, "/"},
-		"conversations":     {e, "/n/default"},
-		"conversation":      {e, "/n/default/c/cache"},
-		"conversation-runs": {runs, "/n/default/c/runs"},
-		"search":            {e, "/n/default/search?q=lru"},
-		"search-empty":      {e, "/n/default/search"},
+		"namespaces":         {e, "/"},
+		"conversations":      {e, "/n/default"},
+		"conversation":       {e, "/n/default/c/cache"},
+		"conversation-runs":  {runs, "/n/default/c/runs"},
+		"conversation-files": {files, "/n/default/c/files"},
+		"search":             {e, "/n/default/search?q=lru"},
+		"search-empty":       {e, "/n/default/search"},
 	} {
 		_, body := page.e.get(page.path)
 		file := filepath.Join("testdata", name+".golden.html")

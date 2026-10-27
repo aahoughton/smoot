@@ -43,20 +43,23 @@ const (
 	AdviceWaitFree            = "advice_wait_free"
 	AdviceFeedback            = "advice_feedback"
 
-	WaitTimedOut     = "wait_timed_out"
-	WaitNothingNew   = "wait_nothing_new"
-	ReadEmpty        = "read_empty"
-	ReadMore         = "read_more"
-	ObserverTag      = "observer_tag"
-	ObserverYoursTag = "observer_yours_tag"
-	AccountLine      = "account_line"
-	StatusNone       = "status_none"
-	ListNone         = "list_none"
-	ListMore         = "list_more"
-	SearchNone       = "search_none"
-	SearchCount      = "search_count"
-	SearchMore       = "search_more"
-	WaitTimeoutRange = "wait_timeout_range"
+	WaitTimedOut          = "wait_timed_out"
+	WaitNothingNew        = "wait_nothing_new"
+	ReadEmpty             = "read_empty"
+	ReadMore              = "read_more"
+	ObserverTag           = "observer_tag"
+	ObserverYoursTag      = "observer_yours_tag"
+	AttachmentRecord      = "attachment_record"
+	AttachmentUnavailable = "attachment_unavailable"
+	AttachmentFetch       = "attachment_fetch"
+	AccountLine           = "account_line"
+	StatusNone            = "status_none"
+	ListNone              = "list_none"
+	ListMore              = "list_more"
+	SearchNone            = "search_none"
+	SearchCount           = "search_count"
+	SearchMore            = "search_more"
+	WaitTimeoutRange      = "wait_timeout_range"
 
 	BridgeUnreachable = "bridge_unreachable"
 	BridgeLostRead    = "bridge_lost_read"
@@ -76,7 +79,7 @@ var PhraseKeys = []string{
 	StandingLine, AdviceReadAfterConclusion, AdviceDone, AdviceClose, AdviceCoordinatorAway, AdviceJoin,
 	AdviceRejoin, AdviceRead, AdviceReadBacklog, AdviceWaitConcluded, AdviceWaitAgreement, AdviceWaitExpected, AdviceWaitFree,
 	AdviceFeedback,
-	WaitTimedOut, WaitNothingNew, ReadEmpty, ReadMore, ObserverTag, ObserverYoursTag, AccountLine, StatusNone, ListNone, ListMore,
+	WaitTimedOut, WaitNothingNew, ReadEmpty, ReadMore, ObserverTag, ObserverYoursTag, AttachmentRecord, AttachmentUnavailable, AttachmentFetch, AccountLine, StatusNone, ListNone, ListMore,
 	SearchNone, SearchCount, SearchMore,
 	WaitTimeoutRange, BridgeUnreachable, BridgeLostRead, BridgeLostWrite, BridgeLostOther,
 	StopHook, SayMissed, FeedbackRecorded, FeedbackReplaced,
@@ -207,9 +210,13 @@ func execute(t *template.Template, data any) string {
 	return b.String()
 }
 
-// Instructions renders the MCP server instructions. url may be empty.
-func (w *Wording) Instructions(url, namespace string) string {
-	return execute(w.instructions, struct{ URL, Namespace string }{url, namespace})
+// Instructions renders the MCP server instructions. url may be empty;
+// attachments adds how to share and download files.
+func (w *Wording) Instructions(url, namespace string, attachments bool) string {
+	return execute(w.instructions, struct {
+		URL, Namespace string
+		Attachments    bool
+	}{url, namespace, attachments})
 }
 
 // Tools returns the names of the tools that have wording.

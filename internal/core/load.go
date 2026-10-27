@@ -89,6 +89,21 @@ func (s *Service) LoadNamespace(ctx context.Context, p Principal, r io.Reader, a
 			return err
 		}
 		res.Messages, err = copyRows(ctx, src, tx, "messages", `SELECT * FROM messages `+inNS+` ORDER BY conversation_id, seq`, []any{srcNS}, remap, nil)
+		if err != nil {
+			return err
+		}
+		blobs := map[int64]int64{}
+		if _, err := copyRows(ctx, src, tx, "attachment_blobs", `SELECT * FROM attachment_blobs `+inNS, []any{srcNS}, remap,
+			func(row map[string]any, id int64) { blobs[row["id"].(int64)] = id }); err != nil {
+			return err
+		}
+		remapBlob := func(row map[string]any) { row["blob_id"] = blobs[row["blob_id"].(int64)] }
+		if _, err := copyRows(ctx, src, tx, "attachments", `SELECT * FROM attachments `+inNS, []any{srcNS},
+			func(row map[string]any) { remap(row); remapBlob(row) }, nil); err != nil {
+			return err
+		}
+		_, err = copyRows(ctx, src, tx, "attachment_downloads", `SELECT * FROM attachment_downloads
+			WHERE blob_id IN (SELECT id FROM attachment_blobs `+inNS+`)`, []any{srcNS}, remapBlob, nil)
 		return err
 	})
 	if err != nil {

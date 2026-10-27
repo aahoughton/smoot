@@ -21,10 +21,12 @@ import (
 // that version and migrates it afterwards.
 //
 // A namespace dump is portable and grants nothing: it holds one namespace's
-// conversations, participants and messages, with every account reference
-// cleared, and no accounts, tokens, memberships or feedback. A full dump
-// holds every table except browser sessions, with IDs, roles and token
-// hashes.
+// conversations, participants, messages and attachment records, with every
+// account reference cleared, and no accounts, tokens, memberships or
+// feedback. A full dump holds every table except browser sessions, with
+// IDs, roles and token hashes. Neither holds attachment bytes: each blob
+// is dumped as gone, "missing" unless it was already gone for another
+// reason.
 
 // DumpFormat and DumpVersion identify the dump format.
 const (
@@ -59,7 +61,16 @@ type blob struct {
 }
 
 // dumpTables lists the tables a dump may hold, in load order.
-var dumpTables = []string{"namespaces", "accounts", "tokens", "memberships", "conversations", "participants", "messages", "feedback"}
+var dumpTables = []string{
+	"namespaces", "accounts", "tokens", "memberships", "conversations", "participants", "messages", "feedback",
+	"attachment_blobs", "attachments", "attachment_downloads",
+}
+
+// dumpSelects replace SELECT * for tables a dump does not copy whole.
+var dumpSelects = map[string]string{
+	"attachment_blobs": `SELECT id, conversation_id, sha256, size, created_at, uploaded_at,
+		coalesce(gone, '` + GoneMissing + `') AS gone FROM attachment_blobs`,
+}
 
 // accountColumnsByTable are the account references a namespace dump clears.
 var accountColumnsByTable = map[string][]string{
@@ -108,11 +119,14 @@ func (s *Service) Dump(ctx context.Context, p Principal, ns string, w io.Writer)
 		if nsID, err = namespaceID(ctx, conn, ns); err != nil {
 			return err
 		}
-		tables = []string{"namespaces", "conversations", "participants", "messages"}
+		tables = []string{"namespaces", "conversations", "participants", "messages", "attachment_blobs", "attachments", "attachment_downloads"}
 	}
 	total := 0
 	for _, table := range tables {
 		query := "SELECT * FROM " + table
+		if q, ok := dumpSelects[table]; ok {
+			query = q
+		}
 		var args []any
 		if ns != "" {
 			switch table {
@@ -120,6 +134,9 @@ func (s *Service) Dump(ctx context.Context, p Principal, ns string, w io.Writer)
 				query += " WHERE id = ?"
 			case "conversations":
 				query += " WHERE namespace_id = ?"
+			case "attachment_downloads":
+				query += ` WHERE blob_id IN (SELECT id FROM attachment_blobs
+					WHERE conversation_id IN (SELECT id FROM conversations WHERE namespace_id = ?))`
 			default:
 				query += " WHERE conversation_id IN (SELECT id FROM conversations WHERE namespace_id = ?)"
 			}
@@ -408,7 +425,7 @@ func checkLoaded(ctx context.Context, tx *sql.Tx, now time.Time, columns map[str
 			JOIN conversations c ON c.id = p.conversation_id
 			WHERE p.state NOT IN ('active', 'concluded', 'left', 'dropped') OR p.presence NOT IN ('working', 'waiting', 'away')`, nil},
 		{"unknown message kind in conversation", `SELECT c.name FROM messages m
-			JOIN conversations c ON c.id = m.conversation_id WHERE m.kind NOT IN ('say', 'conclude', 'observer', 'system')`, nil},
+			JOIN conversations c ON c.id = m.conversation_id WHERE m.kind NOT IN ('say', 'conclude', 'observer', 'system', 'attachment')`, nil},
 		{"unknown status or end condition for conversation", `SELECT name FROM conversations
 			WHERE status NOT IN ('open', 'concluded') OR end_condition NOT IN ('none', 'agreement', 'coordinator', 'timebox')`, nil},
 		{"unknown role for account", `SELECT a.name FROM memberships m JOIN accounts a ON a.id = m.account_id
@@ -451,6 +468,32 @@ func checkLoaded(ctx context.Context, tx *sql.Tx, now time.Time, columns map[str
 			JOIN conversations c ON c.id = f.conversation_id WHERE f.updated_at > ? OR f.created_at > f.updated_at`, []any{latest}},
 		}...)
 	}
+	if len(columns["attachments"]) > 0 {
+		checks = append(checks, []struct {
+			what, query string
+			args        []any
+		}{
+			{"attachment bytes in the dump, or a blob without a known gone reason, in conversation", `SELECT c.name FROM attachment_blobs b
+			JOIN conversations c ON c.id = b.conversation_id
+			WHERE b.data IS NOT NULL OR coalesce(b.gone, '') NOT IN ('expired', 'evicted', 'deleted', 'missing')`, nil},
+			{"an invalid attachment size or sha256 in conversation", `SELECT c.name FROM attachment_blobs b
+			JOIN conversations c ON c.id = b.conversation_id
+			WHERE typeof(b.size) != 'integer' OR b.size < 0 OR b.size > ?
+			OR length(b.sha256) != 64 OR b.sha256 GLOB '*[^0-9a-f]*'`, []any{MaxAttachmentBytes}},
+			{"an attachment message without its record, or a record on another kind of message, in conversation", `SELECT c.name FROM messages m
+			JOIN conversations c ON c.id = m.conversation_id
+			WHERE (m.kind = 'attachment') != EXISTS (SELECT 1 FROM attachments a WHERE a.conversation_id = m.conversation_id AND a.seq = m.seq)`, nil},
+			{"an attachment record whose blob is in another conversation, or named unlike its message, in conversation", `SELECT c.name FROM attachments a
+			JOIN conversations c ON c.id = a.conversation_id
+			JOIN attachment_blobs b ON b.id = a.blob_id
+			JOIN messages m ON m.conversation_id = a.conversation_id AND m.seq = a.seq
+			WHERE b.conversation_id != a.conversation_id OR m.body != a.name`, nil},
+			{"an attachment time in the future in conversation", `SELECT c.name FROM attachment_blobs b
+			JOIN conversations c ON c.id = b.conversation_id
+			WHERE b.created_at > ?1 OR b.uploaded_at > ?1 OR b.created_at > b.uploaded_at
+			OR EXISTS (SELECT 1 FROM attachment_downloads d WHERE d.blob_id = b.id AND d.created_at > ?1)`, []any{latest}},
+		}...)
+	}
 	for _, c := range checks {
 		var name string
 		err := tx.QueryRowContext(ctx, c.query+" LIMIT 1", c.args...).Scan(&name)
@@ -468,6 +511,23 @@ func checkLoaded(ctx context.Context, tx *sql.Tx, now time.Time, columns map[str
 		{"message author", "SELECT DISTINCT author FROM messages"},
 		{"conversation creator", "SELECT created_by FROM conversations"},
 		{"account", "SELECT name FROM accounts"},
+	}
+	if len(columns["attachments"]) > 0 {
+		names = append(names, struct{ kind, query string }{"attachment downloader", "SELECT DISTINCT downloader FROM attachment_downloads"})
+	}
+	if len(columns["attachments"]) > 0 {
+		files, err := collect(ctx, tx, func(r *sql.Rows) (string, error) {
+			var v string
+			return v, r.Scan(&v)
+		}, "SELECT name FROM attachments")
+		if err != nil {
+			return err
+		}
+		for _, f := range files {
+			if err := CheckFileName(f); err != nil {
+				return fmt.Errorf("load: invalid attachment: %w", err)
+			}
+		}
 	}
 	for _, n := range names {
 		rows, err := tx.QueryContext(ctx, n.query)

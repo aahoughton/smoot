@@ -70,6 +70,9 @@ const (
 	KindConclude = "conclude"
 	KindObserver = "observer"
 	KindSystem   = "system"
+	// KindAttachment is a file a participant attached; its body is the
+	// file name and Message.Attachment describes it.
+	KindAttachment = "attachment"
 )
 
 // SystemAuthor is the author of system messages not about one agent.
@@ -92,6 +95,8 @@ type Message struct {
 	CreatedAt time.Time `json:"created_at"`
 	// YourAccount is true when the caller's account posted the message.
 	YourAccount bool `json:"your_account"`
+	// Attachment describes the file of an attachment message.
+	Attachment *Attachment `json:"attachment,omitempty"`
 
 	account sql.NullInt64
 }
