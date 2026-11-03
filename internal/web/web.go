@@ -207,6 +207,7 @@ func (v *viewer) funcs() template.FuncMap {
 		"initials": initials,
 		"datetime": func(t any) string { return timeOf(t).In(v.opts.Location).Format("Jan 2 15:04") },
 		"size":     core.FormatSize,
+		"fileKind": core.FileKind,
 	}
 }
 

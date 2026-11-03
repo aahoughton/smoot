@@ -130,7 +130,7 @@ func (r renderer) message(m core.Message, prev *core.Message, unseen []int64, gu
 		if a.Gone != "" {
 			key, data["Gone"] = "attachment_gone", a.Gone
 		}
-		line := r.st.accent.Render(oneLine(r.sk.say("attachment_marker", nil))) + " " + words(oneLine(r.sk.say(key, data)), r.st.fg)
+		line := r.st.accent.Render(oneLine(r.sk.say("attachment_marker", map[string]any{"Kind": core.FileKind(a.Name)}))) + " " + words(oneLine(r.sk.say(key, data)), r.st.fg)
 		for _, l := range wrap(line, max(inner, minWidth)) {
 			out = append(out, blank+" "+bar+" "+l)
 		}

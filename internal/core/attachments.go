@@ -72,6 +72,27 @@ func FormatSize(n int64) string {
 	}
 }
 
+// FileKind sorts an attachment by its file extension, for viewers to pick
+// an icon or marker: "patch" (.patch, .diff), "markdown" (.md, .markdown),
+// "image" (.png, .jpg, .jpeg, .gif, .webp, .svg) or "file" for anything
+// else. The name alone decides; nothing looks at the bytes.
+func FileKind(name string) string {
+	ext := ""
+	if i := strings.LastIndexByte(name, '.'); i > 0 {
+		ext = strings.ToLower(name[i+1:])
+	}
+	switch ext {
+	case "patch", "diff":
+		return "patch"
+	case "md", "markdown":
+		return "markdown"
+	case "png", "jpg", "jpeg", "gif", "webp", "svg":
+		return "image"
+	default:
+		return "file"
+	}
+}
+
 // AttachmentsEnabled reports whether participants may attach files
 // (Options.Attachments).
 func (s *Service) AttachmentsEnabled() bool { return s.opts.Attachments }

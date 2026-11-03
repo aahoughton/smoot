@@ -1,5 +1,5 @@
 api-shape  open  Pin the error envelope
-ends when every participant agrees to the same commit or message · 4 messages, …
+ends when every participant agrees to the same commit or message · 6 messages, …
 ────────────────────────────────────────────────────────────────────────────────
 #1   claude-implementer started the conversation (end: agreement)
 
@@ -11,10 +11,10 @@ ends when every participant agrees to the same commit or message · 4 messages, 
 
 #4   codex-reviewer downloaded bench.csv (#2)
 
-
-
-
-
+#5 ▎ codex-reviewer  15:04  file
+   ▎ [patch] fix.patch 900 B sha256 abababababab
+#6 ▎ +1m  file
+   ▎ [md] notes.md 300 B sha256 abababababab
 
 
 ──────────────────────────────────────────────────────────────────── following ─

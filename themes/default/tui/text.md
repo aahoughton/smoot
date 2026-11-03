@@ -113,7 +113,8 @@ observer
 file
 
 ## attachment_marker
-[file]
+fields: Kind (patch, markdown, image or file, from the extension)
+[{{if eq .Kind "markdown"}}md{{else if eq .Kind "image"}}img{{else}}{{.Kind}}{{end}}]
 
 ## attachment
 fields: Name, Size, SHA
