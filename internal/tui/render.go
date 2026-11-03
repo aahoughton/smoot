@@ -116,7 +116,7 @@ func (r renderer) message(m core.Message, prev *core.Message, unseen []int64, gu
 	case core.KindObserver:
 		head += "  " + r.st.observer.Render(r.sk.say("kind_observer", nil))
 	case core.KindAttachment:
-		head += "  " + r.st.faint.Render(r.sk.say("kind_attachment", nil))
+		head += "  " + r.st.accent.Render(r.sk.say("kind_attachment", nil))
 	}
 	if m.ReplyTo != nil {
 		head += "  " + r.st.faint.Render(r.sk.say("reply_to", map[string]any{"Seq": *m.ReplyTo}))
@@ -130,7 +130,8 @@ func (r renderer) message(m core.Message, prev *core.Message, unseen []int64, gu
 		if a.Gone != "" {
 			key, data["Gone"] = "attachment_gone", a.Gone
 		}
-		for _, l := range wrap(words(oneLine(r.sk.say(key, data)), r.st.fg), max(inner, minWidth)) {
+		line := r.st.accent.Render(oneLine(r.sk.say("attachment_marker", nil))) + " " + words(oneLine(r.sk.say(key, data)), r.st.fg)
+		for _, l := range wrap(line, max(inner, minWidth)) {
 			out = append(out, blank+" "+bar+" "+l)
 		}
 		return out

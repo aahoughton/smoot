@@ -25,6 +25,7 @@
     </div>
     {{- with .Attachment}}
     <div class="body file">
+      <svg class="file-icon" aria-hidden="true" viewBox="0 0 16 16" width="16" height="16"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13"/></svg>
       {{- if $.Download}}<a class="file-name" href="{{$.Download}}" download>{{.Name}}</a>{{else}}<span class="file-name">{{.Name}}</span>{{end}}
       <span class="file-size">{{size .Size}}</span>
       <code class="file-sha" title="sha256 {{.SHA256}}">{{slice .SHA256 0 12}}</code>

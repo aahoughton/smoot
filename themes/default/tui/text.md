@@ -112,6 +112,9 @@ observer
 ## kind_attachment
 file
 
+## attachment_marker
+[file]
+
 ## attachment
 fields: Name, Size, SHA
 {{.Name}}  {{.Size}}  sha256 {{.SHA}}
