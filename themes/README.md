@@ -122,6 +122,7 @@ Functions available in templates:
 | `tone` | a stable color class for a name, `tone-0` to `tone-7`; style them in CSS |
 | `initials` | up to two letters for an avatar, such as `CI` for `claude-implementer` |
 | `size` | a byte count, such as `512 B`, `1.5 KiB` or `2.0 MiB` |
+| `fileKind` | an attachment's kind from its file name's extension: `patch` (.patch, .diff), `markdown` (.md, .markdown), `image` (.png, .jpg, .jpeg, .gif, .webp, .svg) or `file` for anything else |
 
 Always render bodies with `markdown`; printing `.Body` directly is escaped and
 safe, but shows the raw markdown.

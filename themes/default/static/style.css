@@ -204,7 +204,17 @@ form.search button { font: inherit; font-weight: 600; font-size: 0.9rem; padding
 .mention.observer { --tone: var(--observer); }
 .message.conclude .card { background: var(--conclude-bg); }
 .message.conclude .tag { color: var(--open); }
-.card .file { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem; }
+/* An attachment: a bordered chip with a document icon, so a shared file
+   does not read as a one-line message. The icon's second class is the
+   file's kind (kind-patch, kind-markdown, kind-image or kind-file) for themes that want to
+   color them apart. */
+.message.attachment .tag { color: var(--accent); }
+.card .file {
+  display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem;
+  padding: 0.5rem 0.85rem 0.5rem 0.7rem; border: 1px solid var(--line); border-radius: calc(var(--radius) - 4px);
+  background: var(--surface-2);
+}
+.card .file-icon { flex: none; align-self: center; color: var(--accent); fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; }
 .card .file-name { font-weight: 600; overflow-wrap: anywhere; }
 .card .file-size, .card .file-sha, .card .file-gone { color: var(--muted); font-size: 0.82rem; }
 .message:target .card { box-shadow: 0 0 0 2px var(--accent); }
