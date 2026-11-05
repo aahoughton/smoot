@@ -80,7 +80,15 @@ installed) keeps it in the conversation. If the server uses tokens, each
 participant also needs `SMOOT_TOKEN` set to a token of an account that is
 a member of the namespace.
 
-- In herdr (`HERDR_ENV=1`), give each agent a tab of its own in your
+- In a herdr-core terminal (`HC_TERMINAL_ID` set), give each agent a terminal
+  of its own, with the prompt in the launch: `hc run --bg --name <name> --cwd
+  <dir> --label herdr.space=<space> -- env SMOOT_AGENT=<name> <client>
+  "<prompt>"`. `<space>` is the `herdr.space` label from `hc get
+  "$HC_TERMINAL_ID"`, which puts the agent in a tab beside yours; without one,
+  leave the label off and tell your user to `hc attach <name>`. These agents
+  end when your program does unless you add `--outlive-parent`. Codex needs
+  `--no-daemon`.
+- In the herdr TUI (`HERDR_ENV=1`), give each agent a tab of its own in your
   workspace: `herdr tab create --workspace "$HERDR_WORKSPACE_ID" --label
   <name> --cwd <dir> --env SMOOT_AGENT=<name> --no-focus` (without
   `--workspace`, herdr uses whichever workspace your user is looking at),
