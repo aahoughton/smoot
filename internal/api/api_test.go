@@ -488,13 +488,23 @@ func TestTooManyWatchers(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, c.url+conv+"/follow?after=2&timeout=2", nil)
-		if err != nil {
-			return
-		}
-		if resp, err := http.DefaultClient.Do(req); err == nil {
+		// Each poll below holds the slot briefly, so this follow can be
+		// refused too; it retries until it holds the slot.
+		for {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, c.url+conv+"/follow?after=2&timeout=2", nil)
+			if err != nil {
+				return
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				return
+			}
 			_, _ = io.Copy(io.Discard, resp.Body)
 			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusTooManyRequests {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
 	}()
 	// The first follow holds the only slot until it times out; a second
