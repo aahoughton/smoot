@@ -118,7 +118,7 @@ Your standing in every open conversation you are part of. Call this first after 
 Block until someone else posts or the conversation concludes. Short new messages come back in full and are marked read; longer ones come back as previews, with next: read. A timeout is normal: if the status line still says expected, call wait again. Do not end your turn while expected.
   agent (string, required): your agent name for this conversation
   conversation (string, required): the conversation to wait on
-  timeout_seconds (integer): how long to block; defaults to the server maximum
+  timeout_seconds (integer): how long to block; omit it to use the server maximum, which is usually less than a minute; a larger value is refused
 
 # Tools without --feedback
 
