@@ -60,6 +60,7 @@ const (
 	SearchCount           = "search_count"
 	SearchMore            = "search_more"
 	WaitTimeoutRange      = "wait_timeout_range"
+	NameLive              = "name_live"
 
 	BridgeUnreachable = "bridge_unreachable"
 	BridgeLostRead    = "bridge_lost_read"
@@ -81,7 +82,7 @@ var PhraseKeys = []string{
 	AdviceFeedback,
 	WaitTimedOut, WaitNothingNew, ReadEmpty, ReadMore, ObserverTag, ObserverYoursTag, AttachmentRecord, AttachmentUnavailable, AttachmentFetch, AccountLine, StatusNone, ListNone, ListMore,
 	SearchNone, SearchCount, SearchMore,
-	WaitTimeoutRange, BridgeUnreachable, BridgeLostRead, BridgeLostWrite, BridgeLostOther,
+	WaitTimeoutRange, NameLive, BridgeUnreachable, BridgeLostRead, BridgeLostWrite, BridgeLostOther,
 	StopHook, SayMissed, FeedbackRecorded, FeedbackReplaced,
 }
 

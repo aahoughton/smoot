@@ -37,7 +37,24 @@ type guard struct {
 	// starting counts sessions admitted but not yet recorded, per account;
 	// they hold their place against the caps.
 	starting map[int64]int
+	// names holds the open session that last used each agent name in each
+	// conversation. It is in memory like owners, so a server restart clears
+	// both and a session reconnecting after one is not taken for a stranger.
+	names map[nameUse]string
 }
+
+// nameUse is an agent name one account used in one conversation.
+type nameUse struct {
+	ns           string
+	account      int64
+	agent        string
+	conversation string
+}
+
+// maxNameUsesPerAccount bounds one account's entries in g.names, so it cannot
+// use up another account's. Past it the account's new uses go unrecorded,
+// which only costs the warning they would have given.
+const maxNameUsesPerAccount = 1024
 
 type owner struct {
 	account int64
@@ -140,6 +157,87 @@ func (g *guard) prune(now time.Time) {
 			delete(g.owners, id)
 		}
 	}
+	g.sweepNames()
+}
+
+// sweepNames drops the name uses of sessions that are gone. The caller holds
+// g.mu.
+func (g *guard) sweepNames() {
+	for u, sid := range g.names {
+		if _, ok := g.owners[sid]; !ok {
+			delete(g.names, u)
+		}
+	}
+}
+
+// useName records that session sid called as u.agent in u.conversation.
+func (g *guard) useName(sid string, u nameUse) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if _, ok := g.names[u]; !ok {
+		n := 0
+		for other := range g.names {
+			if other.account == u.account {
+				n++
+			}
+		}
+		if n >= maxNameUsesPerAccount {
+			return
+		}
+	}
+	g.names[u] = sid
+}
+
+// dropName forgets a use whose conversation or participant is finished.
+func (g *guard) dropName(u nameUse) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	delete(g.names, u)
+}
+
+// namesElsewhere returns, sorted, the conversations where another open
+// session last used this agent name.
+func (g *guard) namesElsewhere(sid, ns string, account int64, agent string) []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.prune(time.Now())
+	var out []string
+	for u, holder := range g.names {
+		if holder != sid && u.ns == ns && u.account == account && u.agent == agent {
+			out = append(out, u.conversation)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// recordNames is receiving middleware that records the name each successful
+// tool call used, and forgets it after leave or close. It sees every tool, so
+// a session that carries on after a server restart without joining again is
+// recorded too.
+func recordNames(g *guard, p core.Principal, ns string) mcp.Middleware {
+	return func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			res, err := next(ctx, method, req)
+			params, isCall := req.GetParams().(*mcp.CallToolParamsRaw)
+			if !isCall || method != "tools/call" || err != nil {
+				return res, err
+			}
+			if r, ok := res.(*mcp.CallToolResult); !ok || r == nil || r.IsError {
+				return res, err
+			}
+			conversation, agent := callTarget(params)
+			if s := req.GetSession(); s != nil && s.ID() != "" && conversation != "" && agent != "" {
+				u := nameUse{ns: ns, account: p.AccountID, agent: agent, conversation: conversation}
+				if params.Name == "leave" || params.Name == "close" {
+					g.dropName(u)
+				} else {
+					g.useName(s.ID(), u)
+				}
+			}
+			return res, err
+		}
+	}
 }
 
 // startGrace is how long a new session is kept before the SDK must show it.
@@ -235,6 +333,7 @@ func (g *guard) forget(sid string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	delete(g.owners, sid)
+	g.sweepNames()
 }
 
 // captureSession passes started the session id the SDK assigns on

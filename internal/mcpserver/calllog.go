@@ -77,17 +77,12 @@ func logCall(ctx context.Context, l *slog.Logger, p core.Principal, ns string, r
 	attrs := []slog.Attr{slog.String("ns", ns), slog.Int64("account", p.AccountID), slog.String("session", sessionTag(req.GetSession()))}
 	if params, ok := req.GetParams().(*mcp.CallToolParamsRaw); ok {
 		attrs = append(attrs, slog.String("tool", params.Name))
-		var target struct {
-			Conversation string `json:"conversation"`
-			Agent        string `json:"agent"`
+		conv, agent := callTarget(params)
+		if conv != "" {
+			attrs = append(attrs, slog.String("conv", conv))
 		}
-		if json.Unmarshal(params.Arguments, &target) == nil {
-			if target.Conversation != "" {
-				attrs = append(attrs, slog.String("conv", target.Conversation))
-			}
-			if target.Agent != "" {
-				attrs = append(attrs, slog.String("agent", target.Agent))
-			}
+		if agent != "" {
+			attrs = append(attrs, slog.String("agent", agent))
 		}
 	}
 	outcome, level := "ok", slog.LevelInfo
@@ -115,6 +110,18 @@ func logCall(ctx context.Context, l *slog.Logger, p core.Principal, ns string, r
 	}
 	attrs = append(attrs, n.attrs...)
 	l.LogAttrs(ctx, level, "mcp call", attrs...)
+}
+
+// callTarget returns the conversation and agent a tool call names, if any.
+func callTarget(params *mcp.CallToolParamsRaw) (conversation, agent string) {
+	var target struct {
+		Conversation string `json:"conversation"`
+		Agent        string `json:"agent"`
+	}
+	if json.Unmarshal(params.Arguments, &target) != nil {
+		return "", ""
+	}
+	return target.Conversation, target.Agent
 }
 
 // rejectedParam finds the parameter a schema validation error names.

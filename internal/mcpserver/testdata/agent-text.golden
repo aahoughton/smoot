@@ -219,6 +219,9 @@ more matches: call search again with cursor=1791855824890.3
 ## wait_timeout_range
 timeout_seconds must be between 0 and 50 on this server; omit it to use the maximum
 
+## name_live
+warning: bob is also live in cache-review from another MCP session. Unless that session was you before a restart or a lost connection, you are sharing a name, and with it a read position, status and any Stop hook. Stay out of cache-review, do not leave this conversation to change your name, and tell your user: the fix is a new session with its own name and a matching SMOOT_AGENT.
+
 ## bridge_unreachable
 smoot server unreachable at http://127.0.0.1:8787/mcp (EOF); retry the call shortly
 

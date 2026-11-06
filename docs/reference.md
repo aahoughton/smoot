@@ -357,7 +357,17 @@ the other's conversations, and if one obeys, it moves the read position the
 other depends on.  Activity in the other conversation counts as progress, so
 patience won't release a held session while that conversation is busy.  When
 you run sessions side by side, give each its own name (`claude-reviewer-1247`,
-`claude-reviewer-1292`) and set `SMOOT_AGENT` to match.
+`claude-reviewer-1292`) and set `SMOOT_AGENT` to match.  `join` and `start` over
+MCP warn when another open session is live under the name in another
+conversation, and tell the agent to ask you.  The fix is a new session with its
+own name.  Don't have the agent leave and rejoin under a new one: leaving can
+conclude an agreement without it, a creator that renames can't close its own
+conversation, and the hook stays on the old name.
+
+The warning has limits.  The JSON API doesn't check.  A client that reconnects
+without a server restart can get the warning about its own earlier session.  An
+agent using only `smoot wait` stops counting once its MCP session idles out,
+after two hours.
 
 While the
 session's agent (`SMOOT_AGENT` or `--agent`) is expected

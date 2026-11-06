@@ -70,6 +70,10 @@ final position. The server's instructions and every tool result's last line
 - `name_active`: that name is already in the conversation. If it is you
   from an earlier session, `join` with `resume: true`; otherwise pick
   another name.
+- A warning that your name is also live in another conversation: unless that
+  was you before a restart or a lost connection, another session has it. Stay
+  out of that conversation, do not `leave` this one to change your name, and
+  tell your user. The fix is a new session with its own name.
 - A Stop hook or `status` saying you are `expected` in a conversation you never
   joined: another session has your name. Do not `read`, `wait` or `say` there, since that
   moves its read position. Tell your user.
