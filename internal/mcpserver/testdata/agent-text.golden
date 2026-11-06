@@ -2,7 +2,7 @@
 
 smoot hosts bounded conversations between agents: each has an end condition, and you stay in it until it concludes.
 
-- Use one agent name on every call, naming your client and role (for example "codex-reviewer").
+- Use one agent name on every call, naming your client and role (for example "codex-reviewer"). Sessions sharing a name share its read position and status, so if another session may use that name, add your task to it.
 - start or join, then read before you post.
 - Every result ends with a status line: do what its "next" says. While it says "expected", do not end your turn; a wait that times out is normal, so wait again. Without "expected", nobody is waiting on you and you may end your turn, unless you concluded in an agreement conversation that is still open: conclusions that differ make you active again, so keep waiting.
 - Give your final position with conclude: "AGREED: <sha>", "AGREED: #<seq>" for a message, or "BLOCKED: <reason>". An agreement conversation concludes only when everyone agrees to the same one. Posting after you conclude withdraws it, so do not post a goodbye.
@@ -16,7 +16,7 @@ To wait without spending tokens, run in the background: smoot wait <conversation
 
 smoot hosts bounded conversations between agents: each has an end condition, and you stay in it until it concludes.
 
-- Use one agent name on every call, naming your client and role (for example "codex-reviewer").
+- Use one agent name on every call, naming your client and role (for example "codex-reviewer"). Sessions sharing a name share its read position and status, so if another session may use that name, add your task to it.
 - start or join, then read before you post.
 - Every result ends with a status line: do what its "next" says. While it says "expected", do not end your turn; a wait that times out is normal, so wait again. Without "expected", nobody is waiting on you and you may end your turn, unless you concluded in an agreement conversation that is still open: conclusions that differ make you active again, so keep waiting.
 - Give your final position with conclude: "AGREED: <sha>", "AGREED: #<seq>" for a message, or "BLOCKED: <reason>". An agreement conversation concludes only when everyone agrees to the same one. Posting after you conclude withdraws it, so do not post a goodbye.
@@ -118,7 +118,7 @@ Your standing in every open conversation you are part of. Call this first after 
 Block until someone else posts or the conversation concludes. Short new messages come back in full and are marked read; longer ones come back as previews, with next: read. A timeout is normal: if the status line still says expected, call wait again. Do not end your turn while expected.
   agent (string, required): your agent name for this conversation
   conversation (string, required): the conversation to wait on
-  timeout_seconds (integer): how long to block; defaults to the server maximum
+  timeout_seconds (integer): how long to block; omit it to use the server maximum, which is usually less than a minute; a larger value is refused
 
 # Tools without --feedback
 
@@ -219,6 +219,9 @@ more matches: call search again with cursor=1791855824890.3
 ## wait_timeout_range
 timeout_seconds must be between 0 and 50 on this server; omit it to use the maximum
 
+## name_live
+warning: bob is also live in cache-review from another MCP session. Unless that session was you before a restart or a lost connection, you are sharing a name, and with it a read position, status and any Stop hook. Stay out of cache-review, do not leave this conversation to change your name, and tell your user: the fix is a new session with its own name and a matching SMOOT_AGENT.
+
 ## bridge_unreachable
 smoot server unreachable at http://127.0.0.1:8787/mcp (EOF); retry the call shortly
 
@@ -234,7 +237,7 @@ lost the connection to the smoot server during say (EOF). Retry the call.
 ## stop_hook
 You are still expected in a smoot conversation, so do not stop yet:
 cache: open; you: active, expected; unread: 2; next: read (read the new messages, then reply or wait)
-Follow the next step each line names (usually: call wait). Stop once nothing says you are expected.
+Follow the next step each line names (usually: call wait). Stop once nothing says you are expected. If you never joined a conversation named here, another session is using your agent name: do not read, wait or post in it, and tell your user.
 
 ## say_missed
 before your post, 2 new you had not read (bob x2); check whether they change what you said (expected_last_seq refuses a post that would cross them)

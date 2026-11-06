@@ -58,6 +58,9 @@ type Options struct {
 	Authenticator auth.Authenticator
 	// Activity, if set, records each authenticated MCP request.
 	Activity *auth.Activity
+	// sessions is the guard of the HTTP endpoint serving this server, which
+	// knows the other open sessions; nil for a server on any other transport.
+	sessions *guard
 }
 
 // Handler serves MCP over streamable HTTP. Every request is authenticated;
@@ -81,7 +84,12 @@ func Handler(svc *core.Service, authn auth.Authenticator, opts Options) *Endpoin
 		opts.MaxSessions = DefaultMaxSessions
 	}
 	opts.URL = strings.TrimRight(opts.URL, "/")
-	sdk := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+	g := &guard{
+		authn: authn, ttl: SessionTimeout, owners: map[string]owner{}, names: map[nameUse]string{}, activity: opts.Activity,
+		perAccount: opts.MaxSessionsPerAccount, total: opts.MaxSessions,
+	}
+	opts.sessions = g
+	g.next = mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		p, ok := r.Context().Value(principalKey{}).(core.Principal)
 		if !ok {
 			return nil
@@ -107,10 +115,7 @@ func Handler(svc *core.Service, authn auth.Authenticator, opts Options) *Endpoin
 		Logger:         quiet(opts.Logger),
 		SessionTimeout: SessionTimeout,
 	})
-	return &Endpoint{&guard{
-		authn: authn, next: sdk, ttl: SessionTimeout, owners: map[string]owner{}, activity: opts.Activity,
-		perAccount: opts.MaxSessionsPerAccount, total: opts.MaxSessions,
-	}}
+	return &Endpoint{g}
 }
 
 // Endpoint is the MCP HTTP handler.
@@ -148,6 +153,8 @@ type tools struct {
 	w       *wording.Wording
 	// url is the server URL quoted in shell commands; may be empty.
 	url string
+	// sessions is nil outside the HTTP endpoint.
+	sessions *guard
 }
 
 // NewServer returns an MCP server whose tools act as principal p in
@@ -169,8 +176,11 @@ func NewServer(svc *core.Service, p core.Principal, ns string, opts Options) *mc
 		Logger:       quiet(opts.Logger),
 		Capabilities: &mcp.ServerCapabilities{},
 	})
-	t := &tools{svc: svc, authn: opts.Authenticator, p: p, ns: ns, maxWait: opts.MaxWait, w: w, url: opts.URL}
+	t := &tools{svc: svc, authn: opts.Authenticator, p: p, ns: ns, maxWait: opts.MaxWait, w: w, url: opts.URL, sessions: opts.sessions}
 	s.AddReceivingMiddleware(logCalls(opts.Logger, p, ns))
+	if opts.sessions != nil {
+		s.AddReceivingMiddleware(recordNames(opts.sessions, p, ns))
+	}
 	// Every tool acts only on this server (closed world). The log is
 	// append-only, so writes are not destructive, except close, which ends
 	// the conversation for everyone. read and wait move the caller's read
@@ -428,7 +438,42 @@ func (t *tools) start(ctx context.Context, req *mcp.CallToolRequest, in startIn)
 		return failure(ctx, err)
 	}
 	noteStanding(ctx, st)
-	return text(fmt.Sprintf("started %s (end: %s)\n%s%s", c.Name, c.End, t.accountLine(ctx, p), renderStanding(st))), nil, nil
+	return text(fmt.Sprintf("started %s (end: %s)\n%s%s%s", c.Name, c.End, t.nameWarning(ctx, req, p, in.Agent, c.Name), t.accountLine(ctx, p), renderStanding(st))), nil, nil
+}
+
+// nameWarning returns a line warning that another open session is live under
+// agent in a conversation other than this one, or "". A participant that is
+// not core.Service.Live does not count, so a session its client abandoned
+// stops mattering before the session itself times out.
+func (t *tools) nameWarning(ctx context.Context, req *mcp.CallToolRequest, p core.Principal, agent, conversation string) string {
+	if t.sessions == nil || req.Session == nil {
+		return ""
+	}
+	var live []string
+	for _, name := range t.sessions.namesElsewhere(req.Session.ID(), t.ns, p.AccountID, agent) {
+		if name == conversation {
+			continue
+		}
+		c, err := t.svc.GetConversation(ctx, p, t.ns, name)
+		if err != nil {
+			continue
+		}
+		if c.Status != core.StatusOpen {
+			t.sessions.dropName(nameUse{ns: t.ns, account: p.AccountID, agent: agent, conversation: name})
+			continue
+		}
+		for _, pt := range c.Participants {
+			if pt.Agent == agent && t.svc.Live(pt) {
+				live = append(live, name)
+			}
+		}
+	}
+	if len(live) == 0 {
+		return ""
+	}
+	names := strings.Join(live, ", ")
+	note(ctx, slog.String("name_live_in", names))
+	return t.w.Phrase(wording.NameLive, map[string]any{"Agent": agent, "Conversations": names}) + "\n"
 }
 
 type joinIn struct {
@@ -452,7 +497,7 @@ func (t *tools) join(ctx context.Context, req *mcp.CallToolRequest, in joinIn) (
 		return failure(ctx, err)
 	}
 	noteStanding(ctx, st)
-	return text(renderConversation(t.w, c) + "\n" + t.accountLine(ctx, p) + renderStanding(st)), nil, nil
+	return text(renderConversation(t.w, c) + "\n" + t.nameWarning(ctx, req, p, in.Agent, in.Conversation) + t.accountLine(ctx, p) + renderStanding(st)), nil, nil
 }
 
 type readIn struct {

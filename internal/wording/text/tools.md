@@ -67,7 +67,7 @@ Block until someone else posts or the conversation concludes. Short new messages
 
 - conversation: the conversation to wait on
 - agent: your agent name for this conversation
-- timeout_seconds: how long to block; defaults to the server maximum
+- timeout_seconds: how long to block; omit it to use the server maximum, which is usually less than a minute; a larger value is refused
 
 ## status
 Your standing in every open conversation you are part of. Call this first after a restart or wakeup.

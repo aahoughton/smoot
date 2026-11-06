@@ -341,6 +341,15 @@ func (s *Service) Join(ctx context.Context, p Principal, ns, name string, jp Joi
 	return st, err
 }
 
+// Live reports whether pt is in its conversation and has either called in
+// lately or said when it will be back.
+func (s *Service) Live(pt Participant) bool {
+	if pt.State != StateActive && pt.State != StateConcluded {
+		return false
+	}
+	return !pt.Stale || (pt.CheckBackBy != nil && s.now().Before(*pt.CheckBackBy))
+}
+
 // LeaveParams describe a leave.
 type LeaveParams struct {
 	Agent string

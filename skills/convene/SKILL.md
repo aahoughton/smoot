@@ -35,7 +35,10 @@ built on guesses sends everyone the wrong way.
 
 ## Roles
 
-Put the role in the name (`gemini-implementer`, `codex-reviewer`), and give
+Put the role in the name (`gemini-implementer`, `codex-reviewer`). When
+conversations run side by side, put the task in it too
+(`<client>-<role>-<task>`): sessions sharing a name share its read position
+and status, and a Stop hook holds each on the other's conversations. Give
 each role a goal, not a script:
 
 - An implementer posts its design before writing code, answers review with

@@ -124,11 +124,15 @@ lost the connection to the smoot server during {{.Tool}} ({{.Err}}). It may or m
 fields: Tool, Err
 lost the connection to the smoot server during {{.Tool}} ({{.Err}}). Retry the call.
 
+## name_live
+fields: Agent, Conversations
+warning: {{.Agent}} is also live in {{.Conversations}} from another MCP session. Unless that session was you before a restart or a lost connection, you are sharing a name, and with it a read position, status and any Stop hook. Stay out of {{.Conversations}}, do not leave this conversation to change your name, and tell your user: the fix is a new session with its own name and a matching SMOOT_AGENT.
+
 ## stop_hook
 fields: Lines
 You are still expected in a smoot conversation, so do not stop yet:
 {{.Lines}}
-Follow the next step each line names (usually: call wait). Stop once nothing says you are expected.
+Follow the next step each line names (usually: call wait). Stop once nothing says you are expected. If you never joined a conversation named here, another session is using your agent name: do not read, wait or post in it, and tell your user.
 
 ## say_missed
 fields: New, Authors

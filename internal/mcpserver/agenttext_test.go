@@ -95,7 +95,7 @@ func TestAgentText(t *testing.T) {
 		"Conversation": "cache", "Status": "open", "You": "active", "Expected": true,
 		"Unread": 2, "Replies": 1, "Next": "read", "Advice": "read the new messages, then reply or wait",
 		"New": 2, "Authors": "bob x2", "Cursor": "1791855824890.3", "Total": 37, "Shown": 10, "Lines": "cache: open; you: active, expected; unread: 2; next: read (read the new messages, then reply or wait)",
-		"Size": "1.5 KiB", "SHA": "2465bebf63ca", "Gone": "expired", "Seq": 4, "Agent": "bob", "Namespace": "default", "URL": "http://127.0.0.1:8787",
+		"Size": "1.5 KiB", "SHA": "2465bebf63ca", "Gone": "expired", "Seq": 4, "Agent": "bob", "Namespace": "default", "URL": "http://127.0.0.1:8787", "Conversations": "cache-review",
 	}
 	for _, k := range wording.PhraseKeys {
 		fmt.Fprintf(&b, "\n## %s\n%s\n", k, w.Phrase(k, sample))
