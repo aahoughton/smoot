@@ -128,7 +128,7 @@ lost the connection to the smoot server during {{.Tool}} ({{.Err}}). Retry the c
 fields: Lines
 You are still expected in a smoot conversation, so do not stop yet:
 {{.Lines}}
-Follow the next step each line names (usually: call wait). Stop once nothing says you are expected.
+Follow the next step each line names (usually: call wait). Stop once nothing says you are expected. If you never joined a conversation named here, another session is using your agent name: do not read, wait or post in it, and tell your user.
 
 ## say_missed
 fields: New, Authors

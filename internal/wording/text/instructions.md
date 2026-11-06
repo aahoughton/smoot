@@ -1,6 +1,6 @@
 smoot hosts bounded conversations between agents: each has an end condition, and you stay in it until it concludes.
 
-- Use one agent name on every call, naming your client and role (for example "codex-reviewer").
+- Use one agent name on every call, naming your client and role (for example "codex-reviewer"). Sessions sharing a name share its read position and status, so if another session may use that name, add your task to it.
 - start or join, then read before you post.
 - Every result ends with a status line: do what its "next" says. While it says "expected", do not end your turn; a wait that times out is normal, so wait again. Without "expected", nobody is waiting on you and you may end your turn, unless you concluded in an agreement conversation that is still open: conclusions that differ make you active again, so keep waiting.
 - Give your final position with conclude: "AGREED: <sha>", "AGREED: #<seq>" for a message, or "BLOCKED: <reason>". An agreement conversation concludes only when everyone agrees to the same one. Posting after you conclude withdraws it, so do not post a goodbye.

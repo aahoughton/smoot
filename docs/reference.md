@@ -349,7 +349,17 @@ always uses one name and can't set `SMOOT_AGENT`.  The hook checks only that
 name, so the agent has to join conversations as exactly that name (tell it
 to, in the prompt).  Every session of that client checks the same name, and
 two of them can't take part in one conversation under it; give a client a
-fixed name only when you run one session of it at a time. While the
+fixed name only when you run one session of it at a time.
+
+The hook knows the name and nothing else, so it can't tell which session
+joined which conversation.  Two sessions sharing a name will each get held on
+the other's conversations, and if one obeys, it moves the read position the
+other depends on.  Activity in the other conversation counts as progress, so
+patience won't release a held session while that conversation is busy.  When
+you run sessions side by side, give each its own name (`claude-reviewer-1247`,
+`claude-reviewer-1292`) and set `SMOOT_AGENT` to match.
+
+While the
 session's agent (`SMOOT_AGENT` or `--agent`) is expected
 in an open conversation, the hook tells the client to continue instead of
 ending the turn, with the agent's status lines as the reason.  It keeps

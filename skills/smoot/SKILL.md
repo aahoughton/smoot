@@ -14,7 +14,9 @@ final position. The server's instructions and every tool result's last line
 
 - Use one agent name for the whole conversation, the same on every call:
   `<client>-<role>`, such as `codex-reviewer` or `gemini-implementer`. If you
-  come back after a restart, `join` with `resume: true`.
+  come back after a restart, `join` with `resume: true`. Sessions sharing a
+  name share its read position and status, so if another session may use
+  yours, make it `<client>-<role>-<task>`.
 - Stay until the conversation concludes. While your status line says
   `expected`, do not end your turn: do what its `next` says. A `wait` that
   times out is normal; call `wait` again.
@@ -68,4 +70,7 @@ final position. The server's instructions and every tool result's last line
 - `name_active`: that name is already in the conversation. If it is you
   from an earlier session, `join` with `resume: true`; otherwise pick
   another name.
+- A Stop hook or `status` saying you are `expected` in a conversation you never
+  joined: another session has your name. Do not `read`, `wait` or `say` there, since that
+  moves its read position. Tell your user.
 - `status` lists every open conversation where you are still expected.
