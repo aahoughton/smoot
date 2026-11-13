@@ -31,6 +31,8 @@ type guard struct {
 	perAccount int
 	total      int
 	activity   *auth.Activity
+	// beat is the interval of the comment written to open event streams.
+	beat time.Duration
 
 	mu     sync.Mutex
 	owners map[string]owner
@@ -97,7 +99,14 @@ func (g *guard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodDelete {
 			defer g.forget(sid)
 		}
-		g.next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), principalKey{}, p)))
+		r = r.WithContext(context.WithValue(r.Context(), principalKey{}, p))
+		if r.Method == http.MethodGet && g.beat > 0 {
+			// The session's standalone stream is silent between
+			// server-initiated messages, and smoot sends none.
+			heartbeat(w, r, g.beat, g.next)
+			return
+		}
+		g.next.ServeHTTP(w, r)
 		return
 	}
 	if err := g.admit(p); err != nil {

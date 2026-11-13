@@ -52,6 +52,9 @@ type Options struct {
 	// stands for every client, so only the server-wide cap applies to it.
 	MaxSessionsPerAccount int
 	MaxSessions           int
+	// StreamHeartbeat is how often an open event stream gets a comment
+	// line; 0 means DefaultStreamHeartbeat, a negative value none.
+	StreamHeartbeat time.Duration
 	// Authenticator, if set, authenticates each tool call from its HTTP
 	// headers, so a call uses the credential it carries rather than the
 	// one that opened the session. Handler sets it.
@@ -83,10 +86,13 @@ func Handler(svc *core.Service, authn auth.Authenticator, opts Options) *Endpoin
 	if opts.MaxSessions == 0 {
 		opts.MaxSessions = DefaultMaxSessions
 	}
+	if opts.StreamHeartbeat == 0 {
+		opts.StreamHeartbeat = DefaultStreamHeartbeat
+	}
 	opts.URL = strings.TrimRight(opts.URL, "/")
 	g := &guard{
 		authn: authn, ttl: SessionTimeout, owners: map[string]owner{}, names: map[nameUse]string{}, activity: opts.Activity,
-		perAccount: opts.MaxSessionsPerAccount, total: opts.MaxSessions,
+		perAccount: opts.MaxSessionsPerAccount, total: opts.MaxSessions, beat: opts.StreamHeartbeat,
 	}
 	opts.sessions = g
 	g.next = mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
@@ -128,6 +134,11 @@ const (
 	DefaultMaxSessionsPerAccount = 64
 	DefaultMaxSessions           = 1024
 )
+
+// DefaultStreamHeartbeat is well under the idle limits of the clients and
+// proxies that close a silent event stream: Claude Code drops one after six
+// minutes, and proxies commonly after one.
+const DefaultStreamHeartbeat = 30 * time.Second
 
 // baseURL is the server URL as the client reached it, for the shell-wait
 // recipe in the instructions, or "" if the Host holds characters that
