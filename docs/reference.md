@@ -165,7 +165,9 @@ others out.  Past these the server answers 429 without `Retry-After`; retry
 when a wait or viewer ends.
 
 An account may hold 64 open MCP sessions and the server 1024; a session
-closes after two hours idle.  With auth off every client shares one
+closes after two hours idle.  An open event stream gets a comment line every
+30 seconds, so clients and proxies that drop a silent connection keep it.
+With auth off every client shares one
 anonymous account, so only the server's count applies.
 
 ### Host checks
