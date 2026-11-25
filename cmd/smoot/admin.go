@@ -4,9 +4,11 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -44,7 +46,11 @@ db bootstrap or smoot db recover.
                                     such as 24h
   feedback show ID                  one note in full, with its conversation
   attachments list                  attachment storage by conversation, with
-                                    the cap and quota (serve --attachments)
+                                    the limits (serve --attachments)
+  attachments limit NAMESPACE CONVERSATION [--max-mb N] [--quota-mb N] [--reset]
+                                    set one conversation's largest file and
+                                    its storage quota; 0 or --reset returns
+                                    to the server default
   attachments rm SHA256             drop stored bytes with this sha256, in
                                     every conversation
   attachments rm-conversation NAMESPACE CONVERSATION
@@ -275,6 +281,43 @@ func runAdminRemote(ctx context.Context, args []string, stdout, stderr io.Writer
 		"attachments rm-conversation": noFlags("NAMESPACE CONVERSATION", 2, func(ctx context.Context, cl *client.Client, a []string, out io.Writer) error {
 			return deleteAttachments(ctx, cl, core.AttachmentDelete{Namespace: a[0], Conversation: a[1]}, out)
 		}),
+		"attachments limit": {"NAMESPACE CONVERSATION [--max-mb N] [--quota-mb N] [--reset]", 2, func(fs *flag.FlagSet) adminRun {
+			maxMB := fs.Int64("max-mb", -1, "largest file the conversation takes, in MiB; 0 for the server default")
+			quotaMB := fs.Int64("quota-mb", -1, "attachment storage the conversation may hold, in MiB; 0 for the server default")
+			reset := fs.Bool("reset", false, "return both limits to the server defaults")
+			return func(ctx context.Context, cl *client.Client, a []string, out io.Writer) error {
+				var ch core.AttachmentLimitsChange
+				switch {
+				case *reset && (*maxMB >= 0 || *quotaMB >= 0):
+					return errors.New("--reset does not go with --max-mb or --quota-mb")
+				case *reset:
+					var zero int64
+					ch.MaxBytes, ch.QuotaBytes = &zero, &zero
+				case *maxMB < 0 && *quotaMB < 0:
+					return errors.New("give --max-mb, --quota-mb or --reset")
+				}
+				for _, f := range []struct {
+					name string
+					mb   int64
+					into **int64
+				}{{"max-mb", *maxMB, &ch.MaxBytes}, {"quota-mb", *quotaMB, &ch.QuotaBytes}} {
+					if f.mb < 0 {
+						continue
+					}
+					if f.mb > math.MaxInt64>>20 {
+						return fmt.Errorf("--%s %d is too large", f.name, f.mb)
+					}
+					b := f.mb << 20
+					*f.into = &b
+				}
+				l, err := cl.SetAttachmentLimits(ctx, a[0], a[1], ch)
+				if err == nil {
+					fmt.Fprintf(out, "%s/%s takes files up to %s%s and holds up to %s%s\n", a[0], a[1],
+						core.FormatSize(l.MaxBytes), defaultNote(l.MaxOverridden), core.FormatSize(l.QuotaBytes), defaultNote(l.QuotaOverridden))
+				}
+				return err
+			}
+		}},
 		"namespaces create": noFlags("NAME", 1, func(ctx context.Context, cl *client.Client, a []string, out io.Writer) error {
 			ns, err := cl.CreateNamespace(ctx, a[0])
 			if err == nil {
@@ -332,16 +375,32 @@ func runAdminRemote(ctx context.Context, args []string, stdout, stderr io.Writer
 	return exitOK
 }
 
+// defaultNote marks a limit that is the server's default.
+func defaultNote(overridden bool) string {
+	if overridden {
+		return ""
+	}
+	return " (server default)"
+}
+
 func printAttachmentStorage(out io.Writer, rep core.AttachmentReport) {
-	fmt.Fprintf(out, "%s stored of a %s cap; each conversation may hold %s\n",
-		core.FormatSize(rep.Bytes), core.FormatSize(rep.Cap), core.FormatSize(rep.Quota))
+	fmt.Fprintf(out, "%s stored of a %s cap; by default a conversation may hold %s, in files up to %s\n",
+		core.FormatSize(rep.Bytes), core.FormatSize(rep.Cap), core.FormatSize(rep.Quota), core.FormatSize(rep.Max))
 	if len(rep.Conversations) == 0 {
 		return
 	}
+	// A limit the conversation does not set for itself shows as "-".
+	own := func(n int64) string {
+		if n == 0 {
+			return "-"
+		}
+		return core.FormatSize(n)
+	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "CONVERSATION\tSTATUS\tFILES\tSTORED\tGONE")
+	fmt.Fprintln(tw, "CONVERSATION\tSTATUS\tFILES\tSTORED\tGONE\tMAX FILE\tQUOTA")
 	for _, u := range rep.Conversations {
-		fmt.Fprintf(tw, "%s/%s\t%s\t%d\t%s\t%d\n", u.Namespace, u.Conversation, u.Status, u.Blobs, core.FormatSize(u.Bytes), u.Gone)
+		fmt.Fprintf(tw, "%s/%s\t%s\t%d\t%s\t%d\t%s\t%s\n", u.Namespace, u.Conversation, u.Status, u.Blobs, core.FormatSize(u.Bytes), u.Gone,
+			own(u.MaxBytes), own(u.QuotaBytes))
 	}
 	_ = tw.Flush()
 }

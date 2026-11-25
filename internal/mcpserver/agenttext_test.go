@@ -177,6 +177,11 @@ func TestAgentText(t *testing.T) {
 		t.Fatal(err)
 	}
 	step("alice", alice, "say", with("agent", "alice", "body", "Results are in results.csv; LRU wins."))
+	if _, err := files.Attach(t.Context(), core.Anonymous(), "default", "bench", core.AttachParams{
+		Observer: "pat", Name: "trace.log", Data: []byte("hit\nmiss\n"),
+	}); err != nil {
+		t.Fatal(err)
+	}
 	step("bob", bob, "wait", with("agent", "bob", "timeout_seconds", 5))
 	if _, err := files.Fetch(t.Context(), core.Anonymous(), "default", "bench", core.FetchParams{Agent: "bob", Seq: res.Message.Seq}); err != nil {
 		t.Fatal(err)

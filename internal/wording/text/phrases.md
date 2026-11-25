@@ -79,6 +79,12 @@ fields: Name, Size, Gone
 fields: Conversation, Seq, Agent, Namespace, URL
 get: smoot get {{.Conversation}} {{.Seq}} --agent {{.Agent}} --namespace {{.Namespace}}{{if .URL}} --url '{{.URL}}'{{end}}
 
+## attachment_observer_tag
+[attachment, observer]
+
+## attachment_observer_yours_tag
+[attachment, observer, your account]
+
 ## account_line
 fields: Name
 you post as account {{.Name}}

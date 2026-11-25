@@ -125,7 +125,7 @@ func TestAttachRules(t *testing.T) {
 		{"control", "a", "a\nb", 1, core.CodeInvalid},
 		{"long name", "a", strings.Repeat("x", core.MaxFileNameBytes+1), 1, core.CodeInvalid},
 		{"bad utf8", "a", "\xff", 1, core.CodeInvalid},
-		{"too large", "a", "x", core.MaxAttachmentBytes + 1, core.CodeAttachmentTooLarge},
+		{"too large", "a", "x", core.DefaultAttachmentMax + 1, core.CodeAttachmentTooLarge},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := f.svc.Attach(ctx, f.p, "default", "c", core.AttachParams{Agent: tc.agent, Name: tc.file, Data: make([]byte, tc.size)})
@@ -375,7 +375,7 @@ func TestLoadRejectsBadAttachments(t *testing.T) {
 		{"bad sha", `"sha256":"`, `"sha256":"zz`, "invalid attachment size or sha256"},
 		{"bad name", `p.bin"`, `a/p.bin"`, "invalid attachment"},
 		{"name unlike message", `"name":"p.bin"`, `"name":"q.bin"`, "named unlike its message"},
-		{"kind without record", `"kind":"system","reply_to":null,"seen_seq":null,"seq":2`, `"kind":"attachment","reply_to":null,"seen_seq":null,"seq":2`, "attachment message without its record"},
+		{"kind without record", `"kind":"system","quiet":0,"reply_to":null,"seen_seq":null,"seq":2`, `"kind":"attachment","quiet":0,"reply_to":null,"seen_seq":null,"seq":2`, "attachment message without its record"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bad := strings.ReplaceAll(good, tc.old, tc.new)

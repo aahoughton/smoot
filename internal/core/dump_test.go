@@ -370,6 +370,11 @@ func TestLoadFullDumpFromBeforeFeedback(t *testing.T) {
 			// Schema 5 predates seen_seq and messages.id too.
 			delete(rec["row"].(map[string]any), "seen_seq")
 			delete(rec["row"].(map[string]any), "id")
+			delete(rec["row"].(map[string]any), "quiet")
+		case rec["table"] == "conversations":
+			// So do a conversation's own attachment limits (11).
+			delete(rec["row"].(map[string]any), "attachment_max_bytes")
+			delete(rec["row"].(map[string]any), "attachment_quota_bytes")
 		}
 		b, _ := json.Marshal(rec)
 		withFeedback.Write(append(b, '\n'))

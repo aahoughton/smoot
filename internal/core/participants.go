@@ -387,7 +387,7 @@ func (s *Service) Leave(ctx context.Context, p Principal, ns, name string, lp Le
 				}
 				pt.State = StateActive
 			}
-			if _, err := s.appendPost(ctx, tx, c, KindSay, lp.Agent, lp.Body, nil, &pt.ReadSeq); err != nil {
+			if _, err := s.appendPost(ctx, tx, c, KindSay, lp.Agent, lp.Body, nil, &pt.ReadSeq, false); err != nil {
 				return err
 			}
 		}
@@ -522,7 +522,7 @@ func (s *Service) Conclude(ctx context.Context, p Principal, ns, name string, cp
 				return err
 			}
 		}
-		if _, err := s.appendPost(ctx, tx, c, KindConclude, cp.Agent, cp.Body, nil, &pt.ReadSeq); err != nil {
+		if _, err := s.appendPost(ctx, tx, c, KindConclude, cp.Agent, cp.Body, nil, &pt.ReadSeq, false); err != nil {
 			return err
 		}
 		if err := s.setState(ctx, tx, c, cp.Agent, StateConcluded, PresenceWaiting); err != nil {
@@ -567,7 +567,7 @@ func (s *Service) Close(ctx context.Context, p Principal, ns, name string, cp Cl
 				c.id, cp.Agent).Scan(&seen); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
-			if _, err := s.appendPost(ctx, tx, c, KindConclude, cp.Agent, cp.Body, nil, seen); err != nil {
+			if _, err := s.appendPost(ctx, tx, c, KindConclude, cp.Agent, cp.Body, nil, seen, false); err != nil {
 				return err
 			}
 		}

@@ -164,6 +164,7 @@ func TestResponsesMatchTheContract(t *testing.T) {
 	token = root.Secret
 	download(fmt.Sprintf("%s/attachments/%d", c, attachSeq))
 	call("GET", fmt.Sprintf("%s/attachments/%d?agent=alice", c, attachSeq-1), nil)
+	call("PATCH", c+"/attachments/limits", map[string]any{"max_bytes": 100 << 20})
 	call("GET", "/v1/attachments", nil)
 	token = issued["secret"].(string)
 	call("POST", c+"/conclude", map[string]any{"agent": "bob", "body": "AGREED: abc1234"})

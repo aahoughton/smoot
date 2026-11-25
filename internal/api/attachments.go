@@ -12,14 +12,15 @@ import (
 	"github.com/aahoughton/smoot/internal/core"
 )
 
-// attachReadTimeout bounds how long a client may take to send a file, which
+// AttachReadTimeout bounds how long a client may take to send a file, which
 // may be much larger than a JSON body.
-const attachReadTimeout = 5 * time.Minute
+const AttachReadTimeout = 15 * time.Minute
 
 // attachmentRoutes are registered only when the server enables
 // attachments; openapi.yaml describes them with the rest.
 var attachmentRoutes = []route{
 	{"POST", convPath + "/attachments", (*handler).attach},
+	{"PATCH", convPath + "/attachments/limits", (*handler).setAttachmentLimits},
 	{"GET", convPath + "/attachments/{seq}", (*handler).fetch},
 	{"GET", "/v1/attachments", (*handler).attachmentStorage},
 	{"DELETE", "/v1/attachments/{sha256}", (*handler).deleteAttachmentsBySHA},
@@ -27,7 +28,7 @@ var attachmentRoutes = []route{
 }
 
 // attach takes the file as the raw request body; agent and name are query
-// parameters.
+// parameters. The body is read up to the conversation's file limit.
 func (h *handler) attach(w http.ResponseWriter, r *http.Request, p core.Principal) error {
 	q := r.URL.Query()
 	agent, name := q.Get("agent"), q.Get("name")
@@ -37,15 +38,19 @@ func (h *handler) attach(w http.ResponseWriter, r *http.Request, p core.Principa
 	if err := core.CheckFileName(name); err != nil {
 		return err
 	}
-	rc := http.NewResponseController(w)
-	if err := rc.SetReadDeadline(time.Now().Add(attachReadTimeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+	limits, err := h.svc.AttachmentLimits(r.Context(), p, r.PathValue("ns"), r.PathValue("conv"))
+	if err != nil {
 		return err
 	}
-	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, core.MaxAttachmentBytes))
+	rc := http.NewResponseController(w)
+	if err := rc.SetReadDeadline(time.Now().Add(AttachReadTimeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return err
+	}
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limits.MaxBytes))
 	if err != nil {
 		w.Header().Set("Connection", "close")
 		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
-			return &core.Error{Code: core.CodeAttachmentTooLarge, Message: fmt.Sprintf("file is over %d bytes", core.MaxAttachmentBytes)}
+			return &core.Error{Code: core.CodeAttachmentTooLarge, Message: fmt.Sprintf("file is over the limit of %d bytes", limits.MaxBytes)}
 		}
 		return bodyError(err)
 	}
@@ -55,6 +60,23 @@ func (h *handler) attach(w http.ResponseWriter, r *http.Request, p core.Principa
 		return err
 	}
 	writeJSON(w, http.StatusCreated, res)
+	return nil
+}
+
+// setAttachmentLimits changes one conversation's attachment limits: an
+// absent field leaves a limit as it is, 0 returns it to the server default.
+func (h *handler) setAttachmentLimits(w http.ResponseWriter, r *http.Request, p core.Principal) error {
+	var req core.AttachmentLimitsChange
+	if err := h.decode(w, r, &req); err != nil {
+		return err
+	}
+	ns, conv := r.PathValue("ns"), r.PathValue("conv")
+	l, err := h.svc.SetAttachmentLimits(r.Context(), p, ns, conv, req)
+	if err != nil {
+		return err
+	}
+	h.audit(r, p, "set attachment limits", ns+"/"+conv, "max_bytes", l.MaxBytes, "quota_bytes", l.QuotaBytes)
+	writeJSON(w, http.StatusOK, l)
 	return nil
 }
 

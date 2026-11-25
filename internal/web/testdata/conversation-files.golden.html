@@ -18,7 +18,7 @@
 </header>
 <main class="with-aside">
 <section class="thread">
-  <ol id="messages" class="messages" style="--seq-width: 2ch" data-last-seq="5" data-events="/n/default/c/files/events">
+  <ol id="messages" class="messages" style="--seq-width: 2ch" data-last-seq="6" data-events="/n/default/c/files/events">
   <li class="message system tone-7" id="m1" data-seq="1">
   <a class="seq" href="#m1">#1</a>
   <div class="system-line">alice started the conversation (end: none) <time datetime="2030-01-02T15:04:05Z" title="2030-01-02T15:04:05Z">15:04</time></div>
@@ -67,13 +67,32 @@
 </div>
   </div>
 </li>
+  <li class="message attachment observer tone-2" id="m6" data-seq="6">
+  <a class="seq" href="#m6">#6</a>
+  <div class="card">
+    <div class="head">
+      <span class="avatar" aria-hidden="true">P</span>
+      <span class="author">pat</span> <span class="tag">observer</span> <span class="tag">file</span>
+      <time datetime="2030-01-02T15:04:05Z" title="2030-01-02T15:04:05Z">15:04</time>
+    </div>
+    <div class="body file">
+      <svg class="file-icon kind-file" aria-hidden="true" viewBox="0 0 20 20" width="22" height="22"><path d="M5 2h7l4 4v12H5z"/><path d="M12 2v4h4"/><path d="M8 10h5M8 13h5"/></svg><a class="file-name" href="/n/default/c/files/files/6" download>take one.wav</a>
+      <span class="file-size">4 B</span>
+      <code class="file-sha" title="sha256 a40ff3d5900fb7698b8c865041347cb49eccedc8f93945f89629ad104aaecce4">a40ff3d5900f</code>
+    </div>
+  </div>
+</li>
   </ol>
   <div class="dock">
     <button type="button" class="new-below" hidden><span class="new-count">0</span> new below</button>
-    <form class="observe" method="post" action="/n/default/c/files/observe">
+    <form class="observe" method="post" action="/n/default/c/files/files" enctype="multipart/form-data">
       <label class="as">as <input name="name" value="" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}" maxlength="64" placeholder="name" aria-label="Your name"></label>
-      <textarea name="body" rows="1" required placeholder="Add comments to steer the conversation" aria-label="Comment"></textarea>
-      <button type="submit" title="Send (Enter; Shift+Enter for a new line)">Send</button>
+      <textarea name="body" rows="1" placeholder="Add comments to steer the conversation" aria-label="Comment"></textarea>
+      <button type="submit" title="Send (Enter; Shift+Enter for a new line)" data-sending="Sending">Send</button>
+      <label class="attach">
+        <input type="file" name="file" multiple aria-label="Files to attach" data-max="52428800" data-too-large="is over 50.0 MiB, the largest file this conversation takes">
+        <span class="attach-hint">Choose or drop files, up to 50.0 MiB each. They reach the agents with the next message, so say what they are.</span>
+      </label>
       <p class="observe-error" role="alert" hidden></p>
     </form>
     <p class="observe-closed" hidden>This conversation has concluded; comments are closed.</p>
@@ -89,7 +108,7 @@
   <dt>Started</dt>
   <dd>by <span class="name tone-7">alice</span>, <time datetime="2030-01-02T15:04:05Z" title="2030-01-02T15:04:05Z">Jan 2 15:04</time></dd>
   <dt>Messages</dt>
-  <dd>5, last <time datetime="2030-01-02T15:04:05Z" title="2030-01-02T15:04:05Z">10m ago</time></dd>
+  <dd>6, last <time datetime="2030-01-02T15:04:05Z" title="2030-01-02T15:04:05Z">10m ago</time></dd>
 </dl></section>
   <section id="participants" class="panel"><h2>Participants <span class="count">1</span></h2>
 <ul class="people">

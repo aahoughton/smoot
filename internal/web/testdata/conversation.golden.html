@@ -88,7 +88,7 @@
     <form class="observe" method="post" action="/n/default/c/cache/observe">
       <label class="as">as <input name="name" value="" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}" maxlength="64" placeholder="name" aria-label="Your name"></label>
       <textarea name="body" rows="1" required placeholder="Add comments to steer the conversation" aria-label="Comment"></textarea>
-      <button type="submit" title="Send (Enter; Shift+Enter for a new line)">Send</button>
+      <button type="submit" title="Send (Enter; Shift+Enter for a new line)" data-sending="Sending">Send</button>
       <p class="observe-error" role="alert" hidden></p>
     </form>
     <p class="observe-closed" hidden>This conversation has concluded; comments are closed.</p>

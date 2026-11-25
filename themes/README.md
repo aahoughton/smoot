@@ -56,6 +56,7 @@ Page templates receive a `Page`:
 | `.Before` | int | conversation page; the `?before=` of a page of earlier messages, 0 on the live page (which alone updates live) |
 | `.Observer` | string | conversation page; the name last used to comment |
 | `.Draft` | string | conversation page; the text of a rejected comment |
+| `.MaxUpload` | int | conversation page; the largest file the composer may upload, in bytes, 0 when the server has attachments off |
 | `.Account` | string | every page in auth mode token: the signed-in account, which comments are posted under; empty when auth is off |
 | `.ReturnTo` | string | login page; where to go after signing in (a path on this site) |
 | `.Query` | string | search page; the `?q=` searched for, empty before a search |
@@ -88,8 +89,9 @@ The record types have the same fields as the JSON API (see
 and not archived) and `.LastAt` (nil when it has no conversations); `Message` has `.Seq`, `.Kind` (`say`,
 `conclude`, `observer`, `system`, `attachment`), `.Author`, `.Body`, `.ReplyTo` (nil or a
 seq), `.CreatedAt` and `.Attachment` (nil but for an attachment: `.Name`,
-`.Size` in bytes, `.SHA256`, and `.Gone`, why its bytes are no longer
-stored, empty while they are); `Conversation` has `.Name`, `.Topic`, `.End`,
+`.Size` in bytes, `.SHA256`, `.Gone`, why its bytes are no longer
+stored, empty while they are, and `.Observer`, true when a person watching
+uploaded it); `Conversation` has `.Name`, `.Topic`, `.End`,
 `.EndsAt`, `.Status`, `.CreatedBy`, `.LastSeq`, `.LastAt`, `.Archived`,
 `.Participants` and `.Observers`; each participant has `.Agent`, `.State`,
 `.Presence`, `.Note`, `.Stale`, `.LastSeenAt` and `.YourAccount` (joined
@@ -155,7 +157,15 @@ bring its own.
 
 Pages work without JavaScript: observer comments are a plain form posting to
 `/n/{namespace}/c/{conversation}/observe` with `name` and `body` (`name` is
-ignored when `.Account` is set).
+ignored when `.Account` is set). When `.MaxUpload` is set, the form can post
+as `multipart/form-data` to `/n/{namespace}/c/{conversation}/files` instead,
+with `name` and `body` followed by any number of `file` parts; `name` must
+come before the files. Each file becomes an attachment message, then the
+comment is posted if there is one. The default script sends that form in the
+background, adds files dropped on the page to its file input, refuses a file
+over the input's `data-max` bytes before sending, and after a refusal drops
+from the input the files the `X-Smoot-Attached` response header counts as
+already attached.
 
 In auth mode token, a signed-out browser is sent to `/login`, whose form
 posts `token` and `next` to `/login`; signing out is a form posting to

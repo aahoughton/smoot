@@ -78,6 +78,14 @@ func TestAttachOverHTTP(t *testing.T) {
 		t.Fatalf("download: %d %q %v %v", resp.StatusCode, body, resp.Header, err)
 	}
 
+	// The conversation's own file limit bounds the body; an absent field
+	// leaves a limit as it is.
+	var limits core.AttachmentLimits
+	c.ok("PATCH", attachConv+"/attachments/limits", map[string]any{"max_bytes": 3}, 200, &limits)
+	if limits != (core.AttachmentLimits{MaxBytes: 3, QuotaBytes: 4, MaxOverridden: true}) {
+		t.Fatalf("limits = %+v", limits)
+	}
+
 	for _, tc := range []struct {
 		name, method, path string
 		body               any
@@ -88,7 +96,9 @@ func TestAttachOverHTTP(t *testing.T) {
 		{"no agent", "POST", attachConv + "/attachments?name=x", "x", 400, "invalid"},
 		{"path in name", "POST", attachConv + "/attachments?agent=a&name=..%2Fx", "x", 400, "invalid"},
 		{"over quota", "POST", attachConv + "/attachments?agent=a&name=y", "xy", 507, "attachment_quota"},
-		{"too large", "POST", attachConv + "/attachments?agent=a&name=big", strings.Repeat("x", core.MaxAttachmentBytes+1), 413, "attachment_too_large"},
+		{"too large", "POST", attachConv + "/attachments?agent=a&name=big", "xxxx", 413, "attachment_too_large"},
+		{"limit over the ceiling", "PATCH", attachConv + "/attachments/limits", map[string]any{"max_bytes": core.MaxAttachmentBytes + 1}, 400, "invalid"},
+		{"limits of no conversation", "PATCH", "/v1/namespaces/default/conversations/nope/attachments/limits", map[string]any{"max_bytes": 1}, 404, "conversation_not_found"},
 		{"bad seq", "GET", attachConv + "/attachments/zero?agent=b", nil, 400, "invalid"},
 		{"not an attachment", "GET", attachConv + "/attachments/1?agent=b", nil, 404, "attachment_not_found"},
 		{"not a participant", "GET", attachConv + "/attachments/" + itoa(res.Message.Seq) + "?agent=zed", nil, 409, "not_participant"},
@@ -118,5 +128,6 @@ func TestAttachmentAdminRoutesNeedServerAdmin(t *testing.T) {
 	pat.wantError("GET", "/v1/attachments", nil, 403, "forbidden")
 	pat.wantError("DELETE", "/v1/attachments/"+strings.Repeat("0", 64), nil, 403, "forbidden")
 	pat.wantError("DELETE", attachConv+"/attachments", nil, 403, "forbidden")
+	pat.wantError("PATCH", attachConv+"/attachments/limits", map[string]any{"max_bytes": 1}, 403, "forbidden")
 	root.ok("GET", "/v1/attachments", nil, 200, nil)
 }

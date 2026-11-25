@@ -209,6 +209,7 @@ form.search button { font: inherit; font-weight: 600; font-size: 0.9rem; padding
    file's kind (kind-patch, kind-markdown, kind-image or kind-file) for themes that want to
    color them apart. */
 .message.attachment .tag { color: var(--accent); }
+.message.attachment.observer .tag { color: var(--observer); }
 .card .file {
   display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem;
   padding: 0.5rem 0.85rem 0.5rem 0.7rem; border: 1px solid var(--line); border-radius: calc(var(--radius) - 4px);
@@ -310,6 +311,11 @@ form.observe textarea { width: 100%; resize: none; max-height: 12rem; line-heigh
 form.observe input:focus, form.observe textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
 form.observe button { font: inherit; font-weight: 600; font-size: 0.9rem; padding: 0.45rem 1rem; border-radius: 8px; border: 0; background: var(--accent); color: white; cursor: pointer; }
 form.observe button:hover { filter: brightness(1.08); }
+/* The file picker: a row under the comment box. The whole form is the drop
+   target and shows it while files are dragged over the page. */
+form.observe .attach { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; color: var(--muted); font-size: 0.82rem; }
+form.observe .attach input { padding: 0; border: 0; background: none; font-size: 0.82rem; max-width: 100%; }
+form.observe.dropping { outline: 2px dashed var(--accent); outline-offset: 2px; }
 
 /* Signing in and out (auth mode token). */
 .signout { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; color: var(--muted); }

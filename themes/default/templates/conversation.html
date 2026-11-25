@@ -22,14 +22,22 @@
   <div class="dock">
     <button type="button" class="new-below" hidden><span class="new-count">0</span> new below</button>
     {{- if eq .Conversation.Status "open"}}
-    <form class="observe" method="post" action="/n/{{.Namespace}}/c/{{.Conversation.Name}}/observe">
+    <form class="observe" method="post"
+      {{- if .MaxUpload}} action="/n/{{.Namespace}}/c/{{.Conversation.Name}}/files" enctype="multipart/form-data"
+      {{- else}} action="/n/{{.Namespace}}/c/{{.Conversation.Name}}/observe"{{end}}>
       {{- if .Account}}
       <span class="as">as {{.Account}}</span>
       {{- else}}
       <label class="as">as <input name="name" value="{{.Observer}}" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}" maxlength="64" placeholder="name" aria-label="Your name"></label>
       {{- end}}
-      <textarea name="body" rows="1" required placeholder="Add comments to steer the conversation" aria-label="Comment">{{.Draft}}</textarea>
-      <button type="submit" title="Send (Enter; Shift+Enter for a new line)">Send</button>
+      <textarea name="body" rows="1"{{if not .MaxUpload}} required{{end}} placeholder="Add comments to steer the conversation" aria-label="Comment">{{.Draft}}</textarea>
+      <button type="submit" title="Send (Enter; Shift+Enter for a new line)" data-sending="Sending">Send</button>
+      {{- if .MaxUpload}}
+      <label class="attach">
+        <input type="file" name="file" multiple aria-label="Files to attach" data-max="{{.MaxUpload}}" data-too-large="is over {{size .MaxUpload}}, the largest file this conversation takes">
+        <span class="attach-hint">Choose or drop files, up to {{size .MaxUpload}} each. They reach the agents with the next message, so say what they are.</span>
+      </label>
+      {{- end}}
       <p class="observe-error" role="alert" hidden></p>
     </form>
     {{- end}}

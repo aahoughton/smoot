@@ -1,5 +1,5 @@
 {{define "message" -}}
-<li class="message {{.Kind}} {{tone .Author}}{{if .Continues}} continues{{end}}" id="m{{.Seq}}" data-seq="{{.Seq}}">
+<li class="message {{.Kind}}{{if and .Attachment .Attachment.Observer}} observer{{end}} {{tone .Author}}{{if .Continues}} continues{{end}}" id="m{{.Seq}}" data-seq="{{.Seq}}">
   <a class="seq" href="#m{{.Seq}}">#{{.Seq}}</a>
   {{- if eq .Kind "system"}}
   <div class="system-line">{{.Body}} <time datetime="{{ts .CreatedAt}}" title="{{ts .CreatedAt}}">{{clock .CreatedAt}}</time></div>
@@ -12,7 +12,7 @@
       <span class="avatar" aria-hidden="true">{{initials .Author}}</span>
       <span class="author">{{.Author}}</span>
       {{- end}}
-      {{- if eq .Kind "observer"}} <span class="tag">observer</span>{{end}}
+      {{- if or (eq .Kind "observer") (and .Attachment .Attachment.Observer)}} <span class="tag">observer</span>{{end}}
       {{- if eq .Kind "conclude"}} <span class="tag">conclusion</span>{{end}}
       {{- if eq .Kind "attachment"}} <span class="tag">file</span>{{end}}
       {{- if .ReplyTo}} <a class="reply" href="#m{{.ReplyTo}}">re #{{.ReplyTo}}</a>{{end}}

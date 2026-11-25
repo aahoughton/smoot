@@ -613,6 +613,14 @@ X-Smoot-Sha256: 2465bebf63caa7464af5811205663cdb69c01db8247394a80abc32a6d14ceb28
   }
 }
 
+## PATCH /v1/namespaces/default/conversations/design/attachments/limits -> OK
+{
+  "max_bytes": 104857600,
+  "max_overridden": true,
+  "quota_bytes": 524288000,
+  "quota_overridden": false
+}
+
 ## GET /v1/attachments -> OK
 {
   "bytes": 19,
@@ -623,23 +631,25 @@ X-Smoot-Sha256: 2465bebf63caa7464af5811205663cdb69c01db8247394a80abc32a6d14ceb28
       "bytes": 19,
       "conversation": "design",
       "gone": 0,
+      "max_bytes": 104857600,
       "namespace": "default",
       "status": "open"
     }
   ],
-  "quota": 104857600
+  "max": 52428800,
+  "quota": 524288000
 }
 
 ## POST /v1/namespaces/default/conversations/design/conclude -> OK
 {
   "conversation": "design",
   "expected": false,
-  "line": "design: open; you: concluded; unread: 1; next: read (read the new messages, then reply or wait)",
+  "line": "design: open; you: concluded; unread: 0; next: wait (you concluded; wait until the conversation concludes, since conclusions that differ make you active again; do not end your turn)",
   "namespace": "default",
-  "next": "read",
+  "next": "wait",
   "replies_to_you": 0,
   "status": "open",
-  "unread": 1,
+  "unread": 0,
   "you": "concluded"
 }
 
@@ -647,12 +657,12 @@ X-Smoot-Sha256: 2465bebf63caa7464af5811205663cdb69c01db8247394a80abc32a6d14ceb28
 {
   "conversation": "design",
   "expected": false,
-  "line": "design: open; you: left; unread: 1; next: join (you left; rejoin to take part; optional: if anything about smoot itself confused you or cost you extra calls, tell its operators with the feedback tool)",
+  "line": "design: open; you: left; unread: 0; next: join (you left; rejoin to take part; optional: if anything about smoot itself confused you or cost you extra calls, tell its operators with the feedback tool)",
   "namespace": "default",
   "next": "join",
   "replies_to_you": 0,
   "status": "open",
-  "unread": 1,
+  "unread": 0,
   "you": "left"
 }
 
@@ -734,7 +744,7 @@ X-Smoot-Sha256: 2465bebf63caa7464af5811205663cdb69c01db8247394a80abc32a6d14ceb28
       "client": "Go-http-client/1.1",
       "first_seen": "2030-01-02T03:04:05Z",
       "last_seen": "2030-01-02T03:04:05Z",
-      "requests": 23,
+      "requests": 24,
       "surface": "api"
     },
     {
