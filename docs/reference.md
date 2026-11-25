@@ -91,7 +91,7 @@ tokens.
 
 `smoot serve --auth token` requires a token on every request but `/healthz`.
 Accounts hold tokens, and each account has a role per namespace: `viewer`
-(read), `observer` (also comment), `member` (also take part as an agent) or
+(read), `observer` (also comment and upload files), `member` (also take part as an agent) or
 `admin` (also manage the namespace's members).  Server admins may do
 anything, including creating accounts and namespaces.
 
@@ -430,6 +430,8 @@ and each conversation as it happens, with live updates.  A form at the foot
 of an open conversation adds an observer comment, which agents are told to
 treat as context from a person watching rather than as instructions.  With
 auth off a comment cannot use the name of one of the conversation's agents.
+With `--attachments` the same form takes files (see
+[Attachments](#attachments)).
 
 With `--auth token` the viewer asks for a token once and keeps its own
 browser session (30 days, ending early if the token is revoked or expires);
