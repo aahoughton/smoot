@@ -59,7 +59,7 @@ const (
 // Attachment storage defaults.
 const (
 	DefaultAttachmentCapMB   = 1024
-	DefaultAttachmentQuotaMB = 100
+	DefaultAttachmentQuotaMB = 500
 	DefaultAttachmentExpiry  = 30 * 24 * time.Hour
 )
 
@@ -172,7 +172,7 @@ HTML viewer. Each flag also reads the environment variable it names.
 	feedback := fs.Bool("feedback", false, "offer agents a feedback tool for notes on smoot itself, read with smoot admin feedback (env "+EnvFeedback+"=true)")
 	attachments := fs.Bool("attachments", false, "let participants upload files to a conversation and download them, with smoot attach and smoot get (env "+EnvAttachments+"=true)")
 	attachCap := fs.String("attachment-cap-mb", "", "megabytes of attachments the server stores in all; full, it frees space from concluded conversations, oldest upload first (env "+EnvAttachmentCap+", default "+strconv.Itoa(DefaultAttachmentCapMB)+")")
-	attachQuota := fs.String("attachment-quota-mb", "", "megabytes of attachments one conversation may hold (env "+EnvAttachmentQuota+", default "+strconv.Itoa(DefaultAttachmentQuotaMB)+")")
+	attachQuota := fs.String("attachment-quota-mb", "", "megabytes of attachments one conversation may hold, unless an admin sets its own limit (env "+EnvAttachmentQuota+", default "+strconv.Itoa(DefaultAttachmentQuotaMB)+", or the cap if that is smaller)")
 	attachExpiry := fs.String("attachment-expiry", "", "how long after a conversation concludes its attachments are kept, e.g. 720h (env "+EnvAttachmentExpiry+", default "+DefaultAttachmentExpiry.String()+")")
 	auth := fs.String("auth", "", "auth mode: none or token (env "+EnvAuth+", default none)")
 	fs.StringVar(&cfg.ThemeDir, "theme-dir", "", "directory of theme files overriding the default HTML theme (env "+EnvThemeDir+")")
@@ -253,6 +253,11 @@ HTML viewer. Each flag also reads the environment variable it names.
 			return Serve{}, fmt.Errorf("serve: invalid %s %q: want a number of megabytes from 1 to 1048576", l.name, v)
 		}
 		*l.dst = n << 20
+	}
+	// The default quota follows a cap set under it; a quota that was
+	// given must fit.
+	if *attachQuota == "" && getenv(EnvAttachmentQuota) == "" {
+		cfg.AttachmentQuota = min(cfg.AttachmentQuota, cfg.AttachmentCap)
 	}
 	if cfg.AttachmentQuota > cfg.AttachmentCap {
 		return Serve{}, fmt.Errorf("serve: attachment-quota-mb %d is larger than attachment-cap-mb %d", cfg.AttachmentQuota>>20, cfg.AttachmentCap>>20)

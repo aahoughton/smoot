@@ -12,6 +12,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"slices"
@@ -72,6 +73,10 @@ type Page struct {
 	Observer string
 	// Draft is the text of a comment that was rejected, to show again.
 	Draft string
+	// MaxUpload is the largest file the conversation takes from the
+	// composer, in bytes; 0 when the server has attachments off, and the
+	// composer then takes comments only.
+	MaxUpload int64
 
 	// Account is the signed-in account's name in auth mode token, which is
 	// also the name observer comments are posted under; empty when auth is
@@ -177,6 +182,7 @@ func Handler(svc *core.Service, authn auth.Authenticator, opts Options) (http.Ha
 	mux.HandleFunc("POST /n/{ns}/c/{conv}/observe", v.observe)
 	if svc != nil && svc.AttachmentsEnabled() {
 		mux.HandleFunc("GET /n/{ns}/c/{conv}/files/{seq}", v.download)
+		mux.HandleFunc("POST /n/{ns}/c/{conv}/files", v.upload)
 	}
 	mux.Handle("GET /static/", v.static)
 	if opts.Login {
@@ -565,6 +571,13 @@ func (v *viewer) conversationPage(r *http.Request, p core.Principal, account str
 	if ck, err := r.Cookie(observerCookie); err == nil && core.ValidName(ck.Value) {
 		data.Observer = ck.Value
 	}
+	if v.svc.AttachmentsEnabled() {
+		limits, err := v.svc.AttachmentLimits(r.Context(), p, ns, name)
+		if err != nil {
+			return data, err
+		}
+		data.MaxUpload = limits.MaxBytes
+	}
 	return data, nil
 }
 
@@ -592,25 +605,38 @@ func (v *viewer) observe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ns, name := r.PathValue("ns"), r.PathValue("conv")
-	observer := strings.TrimSpace(r.PostForm.Get("name"))
-	_, err := v.svc.Observe(r.Context(), p, ns, name, core.ObserveParams{Name: observer, Body: r.PostForm.Get("body")})
-	if err != nil {
-		data, perr := v.conversationPage(r, p, account)
-		if perr != nil {
-			v.fail(w, perr, data)
-			return
-		}
-		data.Notice = err.Error()
-		data.Observer, data.Draft = observer, r.PostForm.Get("body")
-		status := http.StatusBadRequest
-		if core.CodeOf(err) == core.CodeRateLimited {
-			status = http.StatusTooManyRequests
-			retryAfter(w, err)
-		}
-		v.render(w, status, "conversation", data)
+	observer, body := strings.TrimSpace(r.PostForm.Get("name")), r.PostForm.Get("body")
+	if _, err := v.svc.Observe(r.Context(), p, ns, name, core.ObserveParams{Name: observer, Body: body}); err != nil {
+		v.rejected(w, r, p, account, err, observer, body)
 		return
 	}
-	if account == "" {
+	v.posted(w, r, account, observer)
+}
+
+// rejected shows the conversation again with why a comment or upload was
+// refused, keeping what was typed.
+func (v *viewer) rejected(w http.ResponseWriter, r *http.Request, p core.Principal, account string, err error, observer, draft string) {
+	data, perr := v.conversationPage(r, p, account)
+	if perr != nil {
+		v.fail(w, perr, data)
+		return
+	}
+	data.Notice = err.Error()
+	data.Observer, data.Draft = observer, draft
+	status := http.StatusBadRequest
+	switch core.CodeOf(err) {
+	case core.CodeRateLimited:
+		status = http.StatusTooManyRequests
+		retryAfter(w, err)
+	case core.CodeAttachmentTooLarge:
+		status = http.StatusRequestEntityTooLarge
+	}
+	v.render(w, status, "conversation", data)
+}
+
+// posted answers a comment or upload that went through.
+func (v *viewer) posted(w http.ResponseWriter, r *http.Request, account, observer string) {
+	if account == "" && observer != "" {
 		http.SetCookie(w, &http.Cookie{
 			Name: observerCookie, Value: observer, Path: "/", MaxAge: 365 * 24 * 3600,
 			HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: v.opts.SecureCookies,
@@ -622,8 +648,132 @@ func (v *viewer) observe(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	http.Redirect(w, r, "/n/"+ns+"/c/"+name+"#messages", http.StatusSeeOther)
+	http.Redirect(w, r, "/n/"+r.PathValue("ns")+"/c/"+r.PathValue("conv")+"#messages", http.StatusSeeOther)
 }
+
+// maxFormText bounds the name and comment fields of an upload form; core
+// applies its own limits to both.
+const maxFormText = 1 << 20
+
+// upload takes the composer's form when the server has attachments on: a
+// multipart form with name and body as for observe, and any number of file
+// parts. Each file is attached as its own message, in order, and then the
+// comment is posted if there is one, so agents waiting on the conversation
+// find the files when the comment calls on them. Files are attached as they
+// arrive: when one is refused, those before it stay, and the notice says so.
+func (v *viewer) upload(w http.ResponseWriter, r *http.Request) {
+	p, account, ok := v.principal(w, r)
+	if !ok {
+		return
+	}
+	ns, name := r.PathValue("ns"), r.PathValue("conv")
+	limits, err := v.svc.AttachmentLimits(r.Context(), p, ns, name)
+	if err != nil {
+		v.fail(w, err, Page{})
+		return
+	}
+	rc := http.NewResponseController(w)
+	if err := rc.SetReadDeadline(time.Now().Add(api.AttachReadTimeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		v.fail(w, err, Page{})
+		return
+	}
+	// Bytes past the quota cannot be stored whatever they hold.
+	r.Body = http.MaxBytesReader(w, r.Body, min(limits.QuotaBytes, math.MaxInt64-2*maxFormText)+2*maxFormText)
+	mr, err := r.MultipartReader()
+	if err != nil {
+		v.fail(w, &core.Error{Code: core.CodeInvalid, Message: "could not read the form"}, Page{})
+		return
+	}
+	var observer, body string
+	attached := 0
+	// unread is why the form could not be read.
+	unread := func(err error) error {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+			return &core.Error{Code: core.CodeAttachmentTooLarge, Message: fmt.Sprintf("the upload is over this conversation's quota of %s", core.FormatSize(limits.QuotaBytes))}
+		}
+		return &core.Error{Code: core.CodeInvalid, Message: "could not read the form"}
+	}
+	fail := func(err error) {
+		// A browser still sending may not read an answer that arrives
+		// early, so the rest of the form is taken first, within the bound
+		// and deadline set above.
+		_, _ = io.Copy(io.Discard, r.Body)
+		ce, ok := errors.AsType[*core.Error](err)
+		if !ok {
+			v.fail(w, err, Page{})
+			return
+		}
+		if attached > 0 {
+			// The page's script drops these from its picker, so sending
+			// again does not attach them twice.
+			w.Header().Set(attachedHeader, strconv.Itoa(attached))
+			err = &core.Error{Code: ce.Code, RetryAfter: ce.RetryAfter, Message: fmt.Sprintf("%s (%d attached before it)", ce.Message, attached)}
+		}
+		v.rejected(w, r, p, account, err, observer, body)
+	}
+	for {
+		part, err := mr.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			fail(unread(err))
+			return
+		}
+		switch field := part.FormName(); {
+		case field == "name" || field == "body":
+			text, err := io.ReadAll(io.LimitReader(part, maxFormText+1))
+			switch {
+			case err != nil:
+				err = unread(err)
+			case len(text) > maxFormText:
+				err = &core.Error{Code: core.CodeInvalid, Message: field + " is too long"}
+			}
+			if err != nil {
+				fail(err)
+				return
+			}
+			if field == "name" {
+				observer = strings.TrimSpace(string(text))
+			} else {
+				body = string(text)
+			}
+		case field == "file" && part.FileName() != "":
+			// A file input with nothing chosen sends a part with no name.
+			data, err := io.ReadAll(io.LimitReader(part, limits.MaxBytes+1))
+			switch {
+			case err != nil:
+				err = unread(err)
+			case int64(len(data)) > limits.MaxBytes:
+				err = &core.Error{Code: core.CodeAttachmentTooLarge, Message: fmt.Sprintf("%s is over %s, the largest file this conversation takes", part.FileName(), core.FormatSize(limits.MaxBytes))}
+			}
+			if err == nil {
+				_, err = v.svc.Attach(r.Context(), p, ns, name, core.AttachParams{Observer: observer, Name: part.FileName(), Data: data})
+			}
+			if err != nil {
+				fail(err)
+				return
+			}
+			attached++
+		}
+	}
+	_ = rc.SetReadDeadline(time.Time{})
+	switch {
+	case strings.TrimSpace(body) != "":
+		if _, err := v.svc.Observe(r.Context(), p, ns, name, core.ObserveParams{Name: observer, Body: body}); err != nil {
+			fail(err)
+			return
+		}
+	case attached == 0:
+		fail(&core.Error{Code: core.CodeInvalid, Message: "write a comment or choose a file"})
+		return
+	}
+	v.posted(w, r, account, observer)
+}
+
+// attachedHeader says how many of an upload's files were attached before
+// the one that was refused.
+const attachedHeader = "X-Smoot-Attached"
 
 // backgroundHeader marks a comment posted by the page's script.
 const backgroundHeader = "X-Smoot-Background"

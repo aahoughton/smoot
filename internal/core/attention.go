@@ -46,6 +46,23 @@ type Standing struct {
 	Line string `json:"line"`
 }
 
+// newUpto returns the seq up to which messages after after count as new for
+// agent: that of the last message from someone else that is not quiet, or
+// after when there is none. Quiet messages are what an observer does other
+// than comment: the files they upload and the lines recording their
+// downloads. Like an observer's comment, a quiet message is never the
+// agent's own, whatever name it carries. A person watching can so pass several files either way without
+// calling on the agents each time: quiet messages count as new, and wake a
+// waiting agent, once another message follows them. A read returns them
+// either way.
+func newUpto(ctx context.Context, q querier, c *conv, after int64, agent string) (int64, error) {
+	var upto int64
+	err := q.QueryRowContext(ctx, `SELECT coalesce(max(seq), ?2) FROM messages
+		WHERE conversation_id = ?1 AND seq > ?2 AND seq <= ?3 AND (author != ?4 OR kind = 'observer') AND quiet = 0`,
+		c.id, after, c.LastSeq, agent).Scan(&upto)
+	return upto, err
+}
+
 func (s *Service) standing(ctx context.Context, q querier, c *conv, agent string) (Standing, error) {
 	st := Standing{Namespace: c.Namespace, Conversation: c.Name, Status: c.Status, You: YouNotJoined}
 	pt, err := s.participant(ctx, q, c.id, agent)
@@ -56,19 +73,24 @@ func (s *Service) standing(ctx context.Context, q querier, c *conv, agent string
 		st.You = pt.State
 		st.Expected = expected(c, pt)
 		// Counts stop at c.LastSeq so they agree with the rest of the result
-		// even if messages land while it is being built.
+		// even if messages land while it is being built, and before any
+		// observers' files nothing has followed yet (see newUpto).
+		upto, err := newUpto(ctx, q, c, pt.ReadSeq, agent)
+		if err != nil {
+			return Standing{}, err
+		}
 		if err := q.QueryRowContext(ctx, `SELECT count(*) FROM messages
-			WHERE conversation_id = ? AND seq > ? AND seq <= ? AND (author != ? OR kind = 'observer')`,
-			c.id, pt.ReadSeq, c.LastSeq, agent).Scan(&st.Unread); err != nil {
+			WHERE conversation_id = ? AND seq > ? AND seq <= ? AND (author != ? OR kind = 'observer' OR quiet = 1)`,
+			c.id, pt.ReadSeq, upto, agent).Scan(&st.Unread); err != nil {
 			return Standing{}, err
 		}
 		// A reply to you answers one of your own posts; the replied-to
 		// message is looked up by its primary key.
 		if err := q.QueryRowContext(ctx, `SELECT count(*) FROM messages m
-			WHERE m.conversation_id = ? AND m.seq > ? AND m.seq <= ? AND (m.author != ? OR m.kind = 'observer')
+			WHERE m.conversation_id = ? AND m.seq > ? AND m.seq <= ? AND (m.author != ? OR m.kind = 'observer' OR m.quiet = 1)
 			AND EXISTS (SELECT 1 FROM messages p WHERE p.conversation_id = m.conversation_id AND p.seq = m.reply_to
 				AND p.author = ? AND p.kind IN ('say', 'conclude'))`,
-			c.id, pt.ReadSeq, c.LastSeq, agent, agent).Scan(&st.RepliesToYou); err != nil {
+			c.id, pt.ReadSeq, upto, agent, agent).Scan(&st.RepliesToYou); err != nil {
 			return Standing{}, err
 		}
 	}
@@ -378,14 +400,18 @@ func (s *Service) digest(ctx context.Context, ns, name, agent string, after int6
 		return Digest{}, err
 	}
 	d := Digest{After: after, LastSeq: c.LastSeq}
+	upto, err := newUpto(ctx, s.db, c, after, agent)
+	if err != nil {
+		return Digest{}, err
+	}
 
 	d.Authors, err = collect(ctx, s.db, func(rows *sql.Rows) (AuthorCount, error) {
 		var ac AuthorCount
 		err := rows.Scan(&ac.Author, &ac.Count)
 		return ac, err
 	}, `SELECT author, count(*) FROM messages
-		WHERE conversation_id = ? AND seq > ? AND seq <= ? AND (author != ? OR kind = 'observer')
-		GROUP BY author ORDER BY min(seq)`, c.id, after, c.LastSeq, agent)
+		WHERE conversation_id = ? AND seq > ? AND seq <= ? AND (author != ? OR kind = 'observer' OR quiet = 1)
+		GROUP BY author ORDER BY min(seq)`, c.id, after, upto, agent)
 	if err != nil {
 		return Digest{}, err
 	}
@@ -393,7 +419,7 @@ func (s *Service) digest(ctx context.Context, ns, name, agent string, after int6
 		d.New += ac.Count
 	}
 
-	d.Previews, err = s.previews(ctx, s.db, c, after, agent)
+	d.Previews, err = s.previews(ctx, s.db, c, after, upto, agent)
 	if err != nil {
 		return Digest{}, err
 	}
@@ -403,8 +429,8 @@ func (s *Service) digest(ctx context.Context, ns, name, agent string, after int6
 }
 
 // previews returns one-line previews of the latest maxPreviews messages
-// from others in (after, c.LastSeq].
-func (s *Service) previews(ctx context.Context, q querier, c *conv, after int64, agent string) ([]Preview, error) {
+// from others in (after, upto].
+func (s *Service) previews(ctx context.Context, q querier, c *conv, after, upto int64, agent string) ([]Preview, error) {
 	return collect(ctx, q, func(rows *sql.Rows) (Preview, error) {
 		var pv Preview
 		var body string
@@ -412,8 +438,8 @@ func (s *Service) previews(ctx context.Context, q querier, c *conv, after int64,
 		pv.Text = previewText(body)
 		return pv, err
 	}, `SELECT seq, kind, author, reply_to, body, account_id FROM
-		(SELECT * FROM messages WHERE conversation_id = ? AND seq > ? AND seq <= ? AND (author != ? OR kind = 'observer')
-		 ORDER BY seq DESC LIMIT ?) ORDER BY seq`, c.id, after, c.LastSeq, agent, maxPreviews)
+		(SELECT * FROM messages WHERE conversation_id = ? AND seq > ? AND seq <= ? AND (author != ? OR kind = 'observer' OR quiet = 1)
+		 ORDER BY seq DESC LIMIT ?) ORDER BY seq`, c.id, after, upto, agent, maxPreviews)
 }
 
 // lineBreaks turns every line terminator into "\n".

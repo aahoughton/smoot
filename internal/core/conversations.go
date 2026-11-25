@@ -122,7 +122,7 @@ func Unseen(m Message, others []Message) []int64 {
 	}
 	var out []int64
 	for _, o := range others {
-		if o.Seq <= *m.SeenSeq || o.Seq >= m.Seq || o.Kind == KindSystem || (o.Author == m.Author && o.Kind != KindObserver) {
+		if o.Seq <= *m.SeenSeq || o.Seq >= m.Seq || o.Kind == KindSystem || (o.Author == m.Author && o.Kind != KindObserver && (o.Attachment == nil || !o.Attachment.Observer)) {
 			continue
 		}
 		out = append(out, o.Seq)
@@ -137,18 +137,23 @@ type conv struct {
 	// creatorAccount is the account that started the conversation; NULL
 	// under auth mode none.
 	creatorAccount sql.NullInt64
+	// attachMax and attachQuota are the conversation's own attachment
+	// limits; NULL means the server's default (see attachmentLimits).
+	attachMax, attachQuota sql.NullInt64
 	Conversation
 }
 
 const convColumns = `c.id, c.namespace_id, n.name, c.name, c.topic, c.end_condition, c.ends_at,
-	c.status, c.created_by, c.created_at, c.concluded_at, c.last_seq, c.last_at, c.created_by_account`
+	c.status, c.created_by, c.created_at, c.concluded_at, c.last_seq, c.last_at, c.created_by_account,
+	c.attachment_max_bytes, c.attachment_quota_bytes`
 
 func scanConv(row interface{ Scan(...any) error }) (*conv, error) {
 	var c conv
 	var endsAt, concludedAt sql.NullInt64
 	var created, lastAt int64
 	err := row.Scan(&c.id, &c.nsID, &c.Namespace, &c.Name, &c.Topic, &c.End, &endsAt,
-		&c.Status, &c.CreatedBy, &created, &concludedAt, &c.LastSeq, &lastAt, &c.creatorAccount)
+		&c.Status, &c.CreatedBy, &created, &concludedAt, &c.LastSeq, &lastAt, &c.creatorAccount,
+		&c.attachMax, &c.attachQuota)
 	if err != nil {
 		return nil, err
 	}
@@ -250,16 +255,22 @@ func (s *Service) concludeConv(ctx context.Context, tx *wtx, c *conv, reason str
 // appendMsg assigns the next seq and appends to the log. The caller holds the
 // write transaction, so c.LastSeq is current.
 func (s *Service) appendMsg(ctx context.Context, tx *wtx, c *conv, kind, author, body string, replyTo *int64) (Message, error) {
-	return s.appendPost(ctx, tx, c, kind, author, body, replyTo, nil)
+	return s.appendPost(ctx, tx, c, kind, author, body, replyTo, nil, false)
+}
+
+// appendQuiet is appendMsg for a message that does not call on the agents
+// by itself (see newUpto): something an observer did other than comment.
+func (s *Service) appendQuiet(ctx context.Context, tx *wtx, c *conv, kind, author, body string) (Message, error) {
+	return s.appendPost(ctx, tx, c, kind, author, body, nil, nil, true)
 }
 
 // appendPost is appendMsg for an agent's say or conclude message, recording
 // seen, the author's read position before posting (nil if unknown).
-func (s *Service) appendPost(ctx context.Context, tx *wtx, c *conv, kind, author, body string, replyTo, seen *int64) (Message, error) {
+func (s *Service) appendPost(ctx context.Context, tx *wtx, c *conv, kind, author, body string, replyTo, seen *int64, quiet bool) (Message, error) {
 	now := s.now()
 	m := Message{Seq: c.LastSeq + 1, Kind: kind, Author: author, Body: body, ReplyTo: replyTo, SeenSeq: seen, CreatedAt: fromMS(ms(now)), account: tx.account}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO messages (conversation_id, seq, kind, author, body, reply_to, seen_seq, created_at, account_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, c.id, m.Seq, kind, author, body, replyTo, seen, ms(now), tx.account); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO messages (conversation_id, seq, kind, author, body, reply_to, seen_seq, created_at, account_id, quiet)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, c.id, m.Seq, kind, author, body, replyTo, seen, ms(now), tx.account, quiet); err != nil {
 		return Message{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE conversations SET last_seq = ?, last_at = ? WHERE id = ?`,

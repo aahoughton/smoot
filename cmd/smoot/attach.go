@@ -42,7 +42,7 @@ func runAttach(ctx context.Context, args []string, stdout, stderr io.Writer, get
 	fs.Usage = func() {
 		fmt.Fprint(stderr, `usage: smoot attach <conversation> FILE --agent NAME [flags]
 
-Uploads FILE (at most 10 MiB) to the conversation as an attachment from the
+Uploads FILE (at most 50 MiB, unless the conversation has a limit of its own) to the conversation as an attachment from the
 agent, which must be a participant. Others download it with smoot get. The
 server must run with --attachments.
 
@@ -111,6 +111,9 @@ func readCapped(path string, limit int64) ([]byte, error) {
 	}
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	if info.Size() > limit {
+		return nil, fmt.Errorf("%s is over %d bytes", path, limit)
 	}
 	data, err := io.ReadAll(io.LimitReader(f, limit+1))
 	if err != nil {

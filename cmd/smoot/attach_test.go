@@ -86,7 +86,7 @@ func TestAttachAndGet(t *testing.T) {
 	}{
 		{"bad name", []string{"attach", "c", src, "--agent", "a", "--name", "../x"}, exitUsage, "pick another with --name"},
 		{"no file", []string{"attach", "c", "--agent", "a"}, exitUsage, "want a conversation name and a file"},
-		{"too large", []string{"attach", "c", big, "--agent", "a"}, exitError, "is over 10485760 bytes"},
+		{"too large", []string{"attach", "c", big, "--agent", "a"}, exitError, "is over 536870912 bytes"},
 		{"directory", []string{"attach", "c", dir, "--agent", "a"}, exitError, "not a regular file"},
 		{"missing file", []string{"attach", "c", filepath.Join(dir, "nope"), "--agent", "a"}, exitError, "no such file"},
 		{"not a participant", []string{"attach", "c", src, "--agent", "zed"}, exitError, "not_participant"},
@@ -140,7 +140,7 @@ func TestAdminAttachments(t *testing.T) {
 	admin := func(args ...string) cliResult {
 		return runCLIInput(ctx, url, "", map[string]string{"SMOOT_TOKEN": token}, append([]string{"admin", "attachments"}, args...)...)
 	}
-	if r := admin("list"); r.code != exitOK || r.stdout != "0 B stored of a 2.0 MiB cap; each conversation may hold 1.0 MiB\n" {
+	if r := admin("list"); r.code != exitOK || r.stdout != "0 B stored of a 2.0 MiB cap; by default a conversation may hold 1.0 MiB, in files up to 50.0 MiB\n" {
 		t.Fatalf("empty list = %+v", r)
 	}
 	root, err := svc.AuthenticateToken(ctx, token)
@@ -158,11 +158,39 @@ func TestAdminAttachments(t *testing.T) {
 	if _, err := svc.Attach(ctx, root, "default", "c2", core.AttachParams{Agent: "a", Name: "y", Data: make([]byte, 2048)}); err != nil {
 		t.Fatal(err)
 	}
+	if r := admin("limit", "default", "c1", "--max-mb", "100"); r.code != exitOK ||
+		r.stdout != "default/c1 takes files up to 100.0 MiB and holds up to 1.0 MiB (server default)\n" {
+		t.Fatalf("limit = %+v", r)
+	}
+	if r := admin("limit", "default", "c1", "--quota-mb", "200"); r.code != exitOK ||
+		r.stdout != "default/c1 takes files up to 100.0 MiB and holds up to 200.0 MiB\n" {
+		t.Fatalf("limit = %+v", r)
+	}
+	if r := admin("limit", "default", "c2", "--max-mb", "3"); r.code != exitOK {
+		t.Fatalf("limit = %+v", r)
+	}
+	if r := admin("limit", "default", "c2", "--reset"); r.code != exitOK ||
+		r.stdout != "default/c2 takes files up to 50.0 MiB (server default) and holds up to 1.0 MiB (server default)\n" {
+		t.Fatalf("reset = %+v", r)
+	}
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"limit", "default", "c1"}, "give --max-mb, --quota-mb or --reset"},
+		{[]string{"limit", "default", "c1", "--reset", "--max-mb", "1"}, "--reset does not go with"},
+		{[]string{"limit", "default", "c1", "--max-mb", "513"}, "invalid"},
+		{[]string{"limit", "default", "nope", "--max-mb", "1"}, "conversation_not_found"},
+	} {
+		if r := admin(tc.args...); r.code != exitError || !strings.Contains(r.stderr, tc.want) {
+			t.Fatalf("%v = %+v, want %q", tc.args, r, tc.want)
+		}
+	}
 	r := admin("list")
-	want := "2.0 KiB stored of a 2.0 MiB cap; each conversation may hold 1.0 MiB\n" +
-		"CONVERSATION  STATUS  FILES  STORED   GONE\n" +
-		"default/c2    open    2      2.0 KiB  0\n" +
-		"default/c1    open    1      4 B      0\n"
+	want := "2.0 KiB stored of a 2.0 MiB cap; by default a conversation may hold 1.0 MiB, in files up to 50.0 MiB\n" +
+		"CONVERSATION  STATUS  FILES  STORED   GONE  MAX FILE   QUOTA\n" +
+		"default/c2    open    2      2.0 KiB  0     -          -\n" +
+		"default/c1    open    1      4 B      0     100.0 MiB  200.0 MiB\n"
 	if r.code != exitOK || r.stdout != want {
 		t.Fatalf("list = %+v\nwant:\n%s", r, want)
 	}

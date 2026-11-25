@@ -494,6 +494,20 @@ func checkLoaded(ctx context.Context, tx *sql.Tx, now time.Time, columns map[str
 			OR EXISTS (SELECT 1 FROM attachment_downloads d WHERE d.blob_id = b.id AND d.created_at > ?1)`, []any{latest}},
 		}...)
 	}
+	if columns["conversations"]["attachment_max_bytes"] {
+		checks = append(checks, []struct {
+			what, query string
+			args        []any
+		}{
+			{"an attachment limit out of range for conversation", `SELECT name FROM conversations
+			WHERE typeof(coalesce(attachment_max_bytes, 1)) != 'integer' OR typeof(coalesce(attachment_quota_bytes, 1)) != 'integer'
+			OR attachment_max_bytes NOT BETWEEN 1 AND ? OR attachment_quota_bytes < 1`, []any{MaxAttachmentBytes}},
+			{"an attachment's observer mark is not 0 or 1 in conversation", `SELECT c.name FROM attachments a
+			JOIN conversations c ON c.id = a.conversation_id WHERE a.observer NOT IN (0, 1)`, nil},
+			{"a message's quiet mark is not 0 or 1 in conversation", `SELECT c.name FROM messages m
+			JOIN conversations c ON c.id = m.conversation_id WHERE m.quiet NOT IN (0, 1)`, nil},
+		}...)
+	}
 	for _, c := range checks {
 		var name string
 		err := tx.QueryRowContext(ctx, c.query+" LIMIT 1", c.args...).Scan(&name)

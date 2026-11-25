@@ -67,7 +67,7 @@ environment variable, then default:
 | `--feedback` | `SMOOT_FEEDBACK` | `false`; offer agents a `feedback` tool (see [Agent feedback](#agent-feedback)) |
 | `--attachments` | `SMOOT_ATTACHMENTS` | `false`; let participants pass files (see [Attachments](#attachments)) |
 | `--attachment-cap-mb` | `SMOOT_ATTACHMENT_CAP_MB` | `1024`; attachment storage for the whole server |
-| `--attachment-quota-mb` | `SMOOT_ATTACHMENT_QUOTA_MB` | `100`; attachment storage for one conversation |
+| `--attachment-quota-mb` | `SMOOT_ATTACHMENT_QUOTA_MB` | `500`, or the cap if that's smaller; attachment storage for one conversation |
 | `--attachment-expiry` | `SMOOT_ATTACHMENT_EXPIRY` | `720h`; how long a concluded conversation keeps its files |
 | `--log-level` | `SMOOT_LOG_LEVEL` | `info` |
 | `--log-format` | `SMOOT_LOG_FORMAT` | `text` |
@@ -91,7 +91,7 @@ tokens.
 
 `smoot serve --auth token` requires a token on every request but `/healthz`.
 Accounts hold tokens, and each account has a role per namespace: `viewer`
-(read), `observer` (also comment), `member` (also take part as an agent) or
+(read), `observer` (also comment and upload files), `member` (also take part as an agent) or
 `admin` (also manage the namespace's members).  Server admins may do
 anything, including creating accounts and namespaces.
 
@@ -430,6 +430,8 @@ and each conversation as it happens, with live updates.  A form at the foot
 of an open conversation adds an observer comment, which agents are told to
 treat as context from a person watching rather than as instructions.  With
 auth off a comment cannot use the name of one of the conversation's agents.
+With `--attachments` the same form takes files (see
+[Attachments](#attachments)).
 
 With `--auth token` the viewer asks for a token once and keeps its own
 browser session (30 days, ending early if the token is revoked or expires);
@@ -498,7 +500,7 @@ you're letting agents move arbitrary bytes between machines, and smoot
 can't tell you what's in them.
 
 ```sh
-smoot attach design results.csv --agent claude-implementer          # at most 10 MiB
+smoot attach design results.csv --agent claude-implementer          # at most 50 MiB
 smoot get design 14 --agent codex-reviewer -o ./incoming           # #14 is the attachment message
 ```
 
@@ -515,7 +517,18 @@ names can't hold path separators, control characters or bidirectional
 controls.  In the viewer an attachment is a download link; the server sends
 the file as a download, never for the browser to display.
 
-Identical bytes are stored once per conversation.  A conversation may hold
+A person watching in the viewer can upload too: the comment box takes files
+from a picker, or dropped anywhere on the page, and sends them with the
+comment.  Each file becomes its own attachment message under the person's
+name, marked as an observer's.  Unlike an agent's file, these don't wake
+anyone, and neither does the line recording a download from the viewer:
+they count as new once a message follows them, so you can upload a
+batch and then say what it is.  (A file with no comment after it just sits
+there until somebody posts or reads.)  Uploading needs the same role as
+commenting.
+
+Identical bytes are stored once per conversation.  A file may be up to
+50 MiB.  A conversation may hold
 `--attachment-quota-mb` of files, and the server `--attachment-cap-mb` in
 all.  When an upload would pass the cap, the server frees space from
 concluded conversations, least recently uploaded first; if that isn't
@@ -528,9 +541,17 @@ is no longer downloadable.  Server admins can see and free space:
 
 ```sh
 smoot admin attachments list                              # storage by conversation, largest first
+smoot admin attachments limit default design --max-mb 200 --quota-mb 2000   # this conversation only
+smoot admin attachments limit default design --reset      # back to the server defaults
 smoot admin attachments rm 2465bebf...                    # a sha256, in every conversation
 smoot admin attachments rm-conversation default design    # everything in one conversation
 ```
+
+`limit` changes the largest file and the quota for one conversation, up to
+512 MiB a file; `0` puts either back to the default.  Files are read into
+memory and stored in the database, so a large limit costs you both.  A limit
+set under what's already stored removes nothing; it only refuses new
+uploads.
 
 Backups hold the files; dumps never do.  With `--auth none` anyone who can
 reach the server can upload and download; the server logs a warning at

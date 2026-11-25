@@ -244,7 +244,8 @@ func TestParseServeAttachments(t *testing.T) {
 		{"defaults", nil, nil, false, DefaultAttachmentCapMB << 20, DefaultAttachmentQuotaMB << 20, DefaultAttachmentExpiry},
 		{"flags", []string{"--attachments", "--attachment-cap-mb", "50", "--attachment-quota-mb", "5", "--attachment-expiry", "2h"}, nil, true, 50 << 20, 5 << 20, 2 * time.Hour},
 		{"env", nil, map[string]string{EnvAttachments: "true", EnvAttachmentCap: "200", EnvAttachmentQuota: "20", EnvAttachmentExpiry: "1h"}, true, 200 << 20, 20 << 20, time.Hour},
-		{"flag beats env", []string{"--attachments=false", "--attachment-cap-mb", "300"}, map[string]string{EnvAttachments: "true", EnvAttachmentCap: "200"}, false, 300 << 20, DefaultAttachmentQuotaMB << 20, DefaultAttachmentExpiry},
+		{"flag beats env", []string{"--attachments=false", "--attachment-cap-mb", "300"}, map[string]string{EnvAttachments: "true", EnvAttachmentCap: "200"}, false, 300 << 20, 300 << 20, DefaultAttachmentExpiry},
+		{"default quota above the cap", []string{"--attachment-cap-mb", "2000"}, nil, false, 2000 << 20, DefaultAttachmentQuotaMB << 20, DefaultAttachmentExpiry},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := map[string]string{"HOME": "/h"}

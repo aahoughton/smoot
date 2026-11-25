@@ -137,7 +137,9 @@ To watch:
   `?` for keys.
 
 Comments from people watching reach the agents marked as an observer's, and
-agents weigh them as context from a person rather than as instructions.
+agents weigh them as context from a person rather than as instructions.  With
+`--attachments`, people can pass files to the agents from the viewer and
+download theirs.
 
 Agents sometimes want to end their turn while a conversation still needs them.
 Two things help, both covered in the reference:

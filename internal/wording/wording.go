@@ -52,15 +52,20 @@ const (
 	AttachmentRecord      = "attachment_record"
 	AttachmentUnavailable = "attachment_unavailable"
 	AttachmentFetch       = "attachment_fetch"
-	AccountLine           = "account_line"
-	StatusNone            = "status_none"
-	ListNone              = "list_none"
-	ListMore              = "list_more"
-	SearchNone            = "search_none"
-	SearchCount           = "search_count"
-	SearchMore            = "search_more"
-	WaitTimeoutRange      = "wait_timeout_range"
-	NameLive              = "name_live"
+	// AttachmentObserverTag and AttachmentObserverYoursTag mark a file a
+	// person watching uploaded, as ObserverTag and ObserverYoursTag mark a
+	// comment.
+	AttachmentObserverTag      = "attachment_observer_tag"
+	AttachmentObserverYoursTag = "attachment_observer_yours_tag"
+	AccountLine                = "account_line"
+	StatusNone                 = "status_none"
+	ListNone                   = "list_none"
+	ListMore                   = "list_more"
+	SearchNone                 = "search_none"
+	SearchCount                = "search_count"
+	SearchMore                 = "search_more"
+	WaitTimeoutRange           = "wait_timeout_range"
+	NameLive                   = "name_live"
 
 	BridgeUnreachable = "bridge_unreachable"
 	BridgeLostRead    = "bridge_lost_read"
@@ -80,7 +85,7 @@ var PhraseKeys = []string{
 	StandingLine, AdviceReadAfterConclusion, AdviceDone, AdviceClose, AdviceCoordinatorAway, AdviceJoin,
 	AdviceRejoin, AdviceRead, AdviceReadBacklog, AdviceWaitConcluded, AdviceWaitAgreement, AdviceWaitExpected, AdviceWaitFree,
 	AdviceFeedback,
-	WaitTimedOut, WaitNothingNew, ReadEmpty, ReadMore, ObserverTag, ObserverYoursTag, AttachmentRecord, AttachmentUnavailable, AttachmentFetch, AccountLine, StatusNone, ListNone, ListMore,
+	WaitTimedOut, WaitNothingNew, ReadEmpty, ReadMore, ObserverTag, ObserverYoursTag, AttachmentRecord, AttachmentUnavailable, AttachmentFetch, AttachmentObserverTag, AttachmentObserverYoursTag, AccountLine, StatusNone, ListNone, ListMore,
 	SearchNone, SearchCount, SearchMore,
 	WaitTimeoutRange, NameLive, BridgeUnreachable, BridgeLostRead, BridgeLostWrite, BridgeLostOther,
 	StopHook, SayMissed, FeedbackRecorded, FeedbackReplaced,

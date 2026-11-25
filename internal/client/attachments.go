@@ -64,6 +64,21 @@ func (c *Client) AttachmentStorage(ctx context.Context) (core.AttachmentReport, 
 	return out, err
 }
 
+// SetAttachmentLimits changes one conversation's attachment limits and
+// returns the limits it then has. Server admins only.
+func (c *Client) SetAttachmentLimits(ctx context.Context, ns, conv string, ch core.AttachmentLimitsChange) (core.AttachmentLimits, error) {
+	body := map[string]int64{}
+	if ch.MaxBytes != nil {
+		body["max_bytes"] = *ch.MaxBytes
+	}
+	if ch.QuotaBytes != nil {
+		body["quota_bytes"] = *ch.QuotaBytes
+	}
+	var out core.AttachmentLimits
+	err := c.do(ctx, http.MethodPatch, convPath(ns, conv)+"/attachments/limits", nil, body, &out)
+	return out, err
+}
+
 // DeleteAttachments drops stored attachment bytes: those with d.SHA256, or
 // all in d.Namespace/d.Conversation. It returns how many files and bytes
 // were dropped. Server admins only.

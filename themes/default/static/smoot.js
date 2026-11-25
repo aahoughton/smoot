@@ -114,12 +114,15 @@
   // background so the page keeps its place; the comment then arrives on the
   // event stream like any other message. One post at a time: the text stays
   // in the box until the server answers, so a repeated Enter would send it
-  // twice.
+  // twice. Where the form has a file picker it is sent as multipart, with
+  // the chosen files; files dropped anywhere on the page join the picker
+  // and go with the next send.
   var form = document.querySelector("form.observe");
   if (!form || !window.fetch) return;
   var box = form.querySelector("textarea");
   var send = form.querySelector("button");
   var error = form.querySelector(".observe-error");
+  var picker = form.querySelector('input[type="file"]');
   var sending = false;
   var enterSends = window.matchMedia && window.matchMedia("(pointer: fine)").matches;
   function grow() {
@@ -184,18 +187,31 @@
   form.addEventListener("submit", function (ev) {
     ev.preventDefault();
     if (sending) return;
+    var uploading = picker && picker.files.length > 0;
+    if (picker && !uploading && !box.value.trim()) return;
+    // A file over the limit is refused here, before any of it is sent.
+    var max = picker ? Number(picker.dataset.max) : 0;
+    var big = uploading && max > 0 ? Array.prototype.filter.call(picker.files, function (f) { return f.size > max; })[0] : null;
+    if (big) {
+      error.textContent = big.name + " " + picker.dataset.tooLarge;
+      error.hidden = false;
+      return;
+    }
     sending = true;
     send.disabled = true;
     error.hidden = true;
+    var label = send.textContent;
+    if (uploading && send.dataset.sending) send.textContent = send.dataset.sending;
     fetch(form.action, {
       method: "POST",
-      body: new URLSearchParams(new FormData(form)),
+      body: picker ? new FormData(form) : new URLSearchParams(new FormData(form)),
       headers: { "X-Smoot-Background": "1" },
       redirect: "manual",
       credentials: "same-origin",
     }).then(function (res) {
       if (res.ok) {
         box.value = "";
+        if (picker) picker.value = "";
         grow();
         box.focus();
         return;
@@ -205,6 +221,13 @@
         error.textContent = "You are signed out. Sign in again in another tab; your comment is still here.";
         error.hidden = false;
         return;
+      }
+      // Files attached before the one that was refused leave the picker.
+      var done = Number(res.headers.get("X-Smoot-Attached")) || 0;
+      if (picker && done > 0 && window.DataTransfer) {
+        var rest = new DataTransfer();
+        Array.prototype.slice.call(picker.files, done).forEach(function (f) { rest.items.add(f); });
+        picker.files = rest.files;
       }
       return res.text().then(function (html) {
         var doc = new DOMParser().parseFromString(html, "text/html");
@@ -218,8 +241,44 @@
     }).finally(function () {
       sending = false;
       send.disabled = false;
+      send.textContent = label;
     });
   });
+
+  if (picker && window.DataTransfer) {
+    // dragenter and dragleave fire for every element crossed, so the
+    // outline follows a count of them.
+    var over = 0;
+    var carriesFiles = function (ev) {
+      return ev.dataTransfer && Array.prototype.indexOf.call(ev.dataTransfer.types, "Files") !== -1;
+    };
+    var settle = function () {
+      over = 0;
+      form.classList.remove("dropping");
+    };
+    document.addEventListener("dragenter", function (ev) {
+      if (!carriesFiles(ev)) return;
+      over++;
+      form.classList.add("dropping");
+    });
+    document.addEventListener("dragleave", function (ev) {
+      if (carriesFiles(ev) && --over <= 0) settle();
+    });
+    document.addEventListener("dragover", function (ev) {
+      if (carriesFiles(ev)) ev.preventDefault();
+    });
+    document.addEventListener("drop", function (ev) {
+      if (!carriesFiles(ev)) return;
+      ev.preventDefault();
+      settle();
+      var all = new DataTransfer();
+      [picker.files, ev.dataTransfer.files].forEach(function (list) {
+        Array.prototype.forEach.call(list, function (f) { all.items.add(f); });
+      });
+      picker.files = all.files;
+      box.focus();
+    });
+  }
 })();
 
 // The conversation list reloads itself every data-refresh seconds while the

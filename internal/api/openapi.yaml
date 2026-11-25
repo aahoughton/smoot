@@ -1018,7 +1018,8 @@ paths:
         server's cap; when the cap is reached, bytes in concluded
         conversations are evicted, least recently uploaded first, and if
         that is not enough nothing is stored or evicted. Bodies are limited
-        to 10 MiB and may take up to 5 minutes to send.
+        to the conversation's file limit (50 MiB unless an admin set
+        another) and may take up to 15 minutes to send.
       parameters:
         - $ref: "#/components/parameters/agentRequired"
         - name: name
@@ -1055,6 +1056,52 @@ paths:
         bytes as deleted. Server admins only.
       responses:
         "200": { $ref: "#/components/responses/Deleted" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /v1/namespaces/{ns}/conversations/{conv}/attachments/limits:
+    parameters:
+      - $ref: "#/components/parameters/ns"
+      - $ref: "#/components/parameters/conv"
+    patch:
+      operationId: setAttachmentLimits
+      description: >
+        Only with --attachments. Changes the conversation's own attachment
+        limits and returns the limits it then has. An absent field leaves
+        that limit as it is; 0 returns it to the server's default. A limit
+        under what the conversation already stores is allowed: stored
+        files stay, and uploads are refused until they fit. Server admins
+        only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                max_bytes:
+                  type: integer
+                  minimum: 0
+                  maximum: 536870912
+                  description: The largest file the conversation takes.
+                quota_bytes:
+                  type: integer
+                  minimum: 0
+                  description: The bytes of attachments the conversation may store.
+      responses:
+        "200":
+          description: The conversation's limits after the change.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [max_bytes, quota_bytes, max_overridden, quota_overridden]
+                properties:
+                  max_bytes: { type: integer }
+                  quota_bytes: { type: integer }
+                  max_overridden: { type: boolean, description: False when max_bytes is the server's default. }
+                  quota_overridden: { type: boolean, description: False when quota_bytes is the server's default. }
+        "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
 
@@ -1104,9 +1151,10 @@ paths:
     get:
       operationId: attachmentStorage
       description: >
-        Only with --attachments. Attachment storage by conversation,
-        largest first, with the server's cap and per-conversation quota.
-        Server admins only.
+        Only with --attachments. Attachment storage for each conversation
+        that has attachments or limits of its own, largest first, with the
+        server's cap and its defaults for one conversation's quota and one
+        file's size. Server admins only.
       responses:
         "200":
           description: Storage in use.
@@ -1114,7 +1162,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [conversations, bytes, cap, quota]
+                required: [conversations, bytes, cap, quota, max]
                 properties:
                   conversations:
                     type: array
@@ -1128,9 +1176,12 @@ paths:
                         blobs: { type: integer, description: Files whose bytes are stored. }
                         bytes: { type: integer }
                         gone: { type: integer, description: Files whose bytes are no longer stored. }
+                        max_bytes: { type: integer, description: The conversation's own file limit; absent when it uses the default. }
+                        quota_bytes: { type: integer, description: The conversation's own quota; absent when it uses the default. }
                   bytes: { type: integer }
                   cap: { type: integer }
-                  quota: { type: integer }
+                  quota: { type: integer, description: The default quota of one conversation. }
+                  max: { type: integer, description: The default limit of one file. }
         "403": { $ref: "#/components/responses/Error" }
 
   /v1/attachments/{sha256}:
@@ -1379,6 +1430,11 @@ components:
             conversation concluded, evicted to make room, deleted by an
             admin, or missing because the conversation was loaded from a
             dump. Absent while the file can be downloaded.
+        observer:
+          type: boolean
+          description: >
+            True when a person watching the conversation uploaded the file
+            in the viewer; absent when a participant attached it.
 
     FileName:
       type: string

@@ -103,10 +103,18 @@ type fetchCmd struct {
 // other messages. Lines are split on every line terminator, not only "\n",
 // so a carriage return cannot start an unindented line either. An
 // attachment whose bytes are stored gets an indented line with the command
-// that downloads it, as the reader.
+// that downloads it, as the reader; one a person watching uploaded is
+// marked as an observer's, like a comment.
 func writeMessages(b *strings.Builder, w *wording.Wording, fc fetchCmd, msgs []core.Message) {
 	for _, m := range msgs {
-		head := fmt.Sprintf("#%d %s%s%s:", m.Seq, m.Author, kindTag(w, m.Kind, m.YourAccount), replyTag(m.ReplyTo))
+		tag := kindTag(w, m.Kind, m.YourAccount)
+		switch {
+		case m.Attachment != nil && m.Attachment.Observer && m.YourAccount:
+			tag = " " + w.Phrase(wording.AttachmentObserverYoursTag, nil)
+		case m.Attachment != nil && m.Attachment.Observer:
+			tag = " " + w.Phrase(wording.AttachmentObserverTag, nil)
+		}
+		head := fmt.Sprintf("#%d %s%s%s:", m.Seq, m.Author, tag, replyTag(m.ReplyTo))
 		body := strings.TrimSpace(core.NormalizeLineBreaks(m.Body))
 		if m.Attachment != nil {
 			fmt.Fprintf(b, "%s %s\n", head, attachmentText(w, *m.Attachment))
